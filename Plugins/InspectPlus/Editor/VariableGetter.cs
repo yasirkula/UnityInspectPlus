@@ -7,7 +7,7 @@ namespace InspectPlusNamespace.Extras
 	// Delegate to get the value of a variable (either field or property)
 	public delegate object VariableGetVal( object obj );
 
-	// Custom struct to hold a variable, its important properties and its getter function
+	// Custom struct to hold a variable's description and its getter function
 	public struct VariableGetterHolder
 	{
 		public readonly string description;

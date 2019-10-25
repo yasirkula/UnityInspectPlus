@@ -26,10 +26,10 @@ namespace InspectPlusNamespace.Extras
 			}
 		}
 
-		protected DebugModeEntry parent;
 		public VariableGetterHolder Getter;
 		public object Obj;
-		protected bool isPrimitive;
+		protected DebugModeEntry parent;
+		protected string primitiveValue;
 
 		protected DebugModeEnumerableEntry enumerableRoot;
 		protected List<DebugModeEntry> variables;
@@ -45,7 +45,6 @@ namespace InspectPlusNamespace.Extras
 		{
 			if( m_isExpanded )
 			{
-
 				Type prevType = Obj != null ? Obj.GetType() : null;
 				Obj = Getter.Get( parent != null ? parent.Obj : null );
 
@@ -56,7 +55,8 @@ namespace InspectPlusNamespace.Extras
 					if( Obj.GetType() != prevType )
 						PoolLists();
 
-					isPrimitive = Obj.GetType().IsPrimitiveUnityType();
+					// Cache ToString() values of primitives since they won't change until next Refresh
+					primitiveValue = Obj.GetType().IsPrimitiveUnityType() ? Obj.ToString() : null;
 
 					if( Obj is IEnumerable && !( Obj is Transform ) )
 					{
@@ -98,8 +98,8 @@ namespace InspectPlusNamespace.Extras
 				{
 					if( Obj == null || Obj.Equals( null ) )
 						EditorGUILayout.LabelField( "Null" );
-					else if( isPrimitive )
-						EditorGUILayout.LabelField( Obj.ToString() );
+					else if( primitiveValue != null ) // Variable is primitive
+						EditorGUILayout.LabelField( primitiveValue );
 					else
 					{
 						if( Obj is Object && parent != null ) // We want to expose the variables of root entries
@@ -156,7 +156,7 @@ namespace InspectPlusNamespace.Extras
 			return new List<DebugModeEntry>( preferredSize );
 		}
 
-		protected void PoolLists()
+		public void PoolLists()
 		{
 			if( enumerableRoot != null )
 			{
@@ -212,11 +212,17 @@ namespace InspectPlusNamespace.Extras
 				if( Obj is IList )
 				{
 					int count = ( (IList) Obj ).Count;
+
+					// Add new entries to variables if there aren't enough entries
 					for( int i = variables.Count; i < count; i++ )
 						variables.Add( new DebugModeEntry( this ) { Getter = new VariableGetterHolder( i + ":", new EnumerableValueGetter( this, i ).GetValue ) } );
 
+					// Remove excessive entries from variables
 					for( int i = variables.Count - 1; i >= count; i-- )
+					{
+						variables[i].PoolLists();
 						variables.RemoveAt( i );
+					}
 				}
 				else
 				{
@@ -237,7 +243,10 @@ namespace InspectPlusNamespace.Extras
 					}
 
 					for( int i = variables.Count - 1; i >= index; i-- )
+					{
+						variables[i].PoolLists();
 						variables.RemoveAt( i );
+					}
 				}
 
 				for( int i = 0; i < variables.Count; i++ )

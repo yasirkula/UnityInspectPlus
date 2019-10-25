@@ -2,10 +2,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
-using UnityEditor;
-using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace InspectPlusNamespace.Extras
 {
@@ -42,7 +39,7 @@ namespace InspectPlusNamespace.Extras
 
 			validVariables.Clear();
 
-			// Filter the fields
+			// Filter the variables
 			Type currType = type;
 			while( currType != typeof( object ) )
 			{
@@ -60,7 +57,7 @@ namespace InspectPlusNamespace.Extras
 					if( variableType.IsPointer )
 						continue;
 
-					VariableGetVal getter = field.CreateGetter( type );
+					VariableGetVal getter = field.CreateGetter();
 					if( getter != null )
 						validVariables.Add( new VariableGetterHolder( field, getter ) );
 				}
@@ -76,10 +73,6 @@ namespace InspectPlusNamespace.Extras
 				{
 					PropertyInfo property = properties[i];
 					Type variableType = property.PropertyType;
-
-					// Skip primitive types
-					if( variableType.IsPrimitiveUnityType() )
-						continue;
 
 					// Assembly variables can throw InvalidCastException on .NET 4.0 runtime
 					if( typeof( Type ).IsAssignableFrom( variableType ) || variableType.Namespace == reflectionNameSpace )
@@ -143,21 +136,8 @@ namespace InspectPlusNamespace.Extras
 		}
 
 		// Get <get> function for a field
-		public static VariableGetVal CreateGetter( this FieldInfo fieldInfo, Type type )
+		public static VariableGetVal CreateGetter( this FieldInfo fieldInfo )
 		{
-			// Commented the IL generator code below because it might actually be slower than simply using reflection
-			// Credit: https://www.codeproject.com/Articles/14560/Fast-Dynamic-Property-Field-Accessors
-			//DynamicMethod dm = new DynamicMethod( "Get" + fieldInfo.Name, fieldInfo.FieldType, new Type[] { typeof( object ) }, type );
-			//ILGenerator il = dm.GetILGenerator();
-			//// Load the instance of the object (argument 0) onto the stack
-			//il.Emit( OpCodes.Ldarg_0 );
-			//// Load the value of the object's field (fi) onto the stack
-			//il.Emit( OpCodes.Ldfld, fieldInfo );
-			//// return the value on the top of the stack
-			//il.Emit( OpCodes.Ret );
-
-			//return (VariableGetVal) dm.CreateDelegate( typeof( VariableGetVal ) );
-
 			return fieldInfo.GetValue;
 		}
 
