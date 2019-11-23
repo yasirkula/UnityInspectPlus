@@ -62,6 +62,11 @@ namespace InspectPlusNamespace
 		private int inspectorDrawerCount;
 		private Object mainObject;
 
+		// Serializing CustomProjectWindow makes the TreeView's state (collapsed entries etc.) persist during domain reload
+		[SerializeField]
+		private CustomProjectWindow projectWindow = new CustomProjectWindow();
+		private bool showProjectWindow;
+
 		private bool shouldRepositionSelf;
 		private bool shouldRepaint;
 		private bool snapHistoryToActiveObject;
@@ -152,15 +157,23 @@ namespace InspectPlusNamespace
 			// Make sure that debug mode drawers are recreated
 			if( inspectorDrawerCount > 0 )
 			{
-				if( inspectorDrawers[0].target )
-					InspectInternal( inspectorDrawers[0].target, false );
-				else
+				try
 				{
-					for( int i = 0; i < inspectorDrawers.Count; i++ )
-						DestroyImmediate( inspectorDrawers[i] );
+					if( inspectorDrawers[0].target )
+						InspectInternal( inspectorDrawers[0].target, false );
+					else
+					{
+						for( int i = 0; i < inspectorDrawers.Count; i++ )
+							DestroyImmediate( inspectorDrawers[i] );
 
-					inspectorDrawers.Clear();
-					inspectorDrawerCount = 0;
+						inspectorDrawers.Clear();
+						inspectorDrawerCount = 0;
+					}
+				}
+				catch( NullReferenceException )
+				{
+					// Some Editors (like folder editors) might throw NullReferenceException when accessing 'target' in OnEnable
+					InspectInternal( mainObject, false );
 				}
 			}
 
@@ -564,6 +577,15 @@ namespace InspectPlusNamespace
 				inspectorDrawers.RemoveAt( i );
 			}
 
+			// Show a project window instance while inspecting a directory
+			string assetPath = AssetDatabase.GetAssetPath( obj );
+			if( !string.IsNullOrEmpty( assetPath ) && AssetDatabase.IsValidFolder( assetPath ) )
+			{
+				projectWindow.Show( assetPath );
+				showProjectWindow = true;
+			}
+			else
+				showProjectWindow = false;
 
 			if( addHistoryEntry )
 			{
@@ -636,6 +658,12 @@ namespace InspectPlusNamespace
 				shouldRepaint = false;
 				Repaint();
 			}
+		}
+
+		private void OnProjectChange()
+		{
+			if( showProjectWindow )
+				projectWindow.Refresh();
 		}
 
 		#region GUI Functions
@@ -728,6 +756,12 @@ namespace InspectPlusNamespace
 					}
 
 					GUILayout.Space( 5 );
+				}
+
+				if( showProjectWindow )
+				{
+					GUILayout.Space( -4 ); // Get rid of the free space above the project window's header
+					projectWindow.OnGUI();
 				}
 
 				if( showPreview )
