@@ -51,9 +51,11 @@ namespace InspectPlusNamespace.Extras
 		public bool ShowHistoryByDefault = true;
 		[Tooltip( "New windows should show object preview area in the Inspector by default (only shown when an object support preview)" )]
 		public bool ShowPreviewByDefault = false;
+		[Tooltip( "While inspecting a folder, selecting files/folders inside the folder will update Unity's selection, as well" )]
+		public bool SyncProjectWindowSelection = true;
 		[Tooltip( "Selecting an object in Favorites or History will highlight the object in Hierarchy/Project" )]
 		public bool AutomaticallyPingSelectedObject = true;
-		[Tooltip( "Clearing the History via context menu will delete the inspected object's History entry, as well" )]
+		[Tooltip( "Clearing the History via context menu will delete the currently inspected object's History entry, as well" )]
 		public bool ClearingHistoryRemovesActiveObject = false;
 
 		private void OnEnable()

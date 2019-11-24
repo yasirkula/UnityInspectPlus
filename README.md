@@ -14,6 +14,7 @@ After importing [InspectPlus.unitypackage](https://github.com/yasirkula/UnityIns
   - right clicking a component in the Inspector
 - You can right click an object in the **History** list to add it to the **Favorites** list
 - You can drag&drop objects to the History and Favorites lists to quickly fill these lists
+- You can right click the icons of the History and Favorites lists to quickly select an object from these lists
 - You can right click variables in the Inspector to copy&paste their values (variables that are not drawn with *SerializedProperty* don't support this feature)
 - You can right click the Inspect+ tab to enable **Debug mode**: you can inspect all variables of an object in this mode, including static, readonly and non-serializable variables
 - You can show the Inspect+ window from your editor scripts by calling the `InspectPlusNamespace.InspectPlusWindow.Inspect` functions

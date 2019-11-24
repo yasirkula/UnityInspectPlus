@@ -55,17 +55,20 @@ namespace InspectPlusNamespace
 		private static Rect lastWindowPosition;
 
 		// These are not readonly to support serialization of the data
-		// SerializeField makes history data persist between editor sessions
+		// SerializeField makes history data persist between editor sessions (unfortunately, only assets persist, not scene objects)
 		[SerializeField]
 		private List<Object> history = new List<Object>( 8 );
-		private List<Editor> inspectorDrawers = new List<Editor>( 16 );
-		private int inspectorDrawerCount;
+		[SerializeField]
 		private Object mainObject;
 
-		// Serializing CustomProjectWindow makes the TreeView's state (collapsed entries etc.) persist during domain reload
+		private List<Editor> inspectorDrawers = new List<Editor>( 16 );
+		private int inspectorDrawerCount;
+
+		// Serializing CustomProjectWindow makes the TreeView's state (collapsed entries etc.) persist between editor sessions
 		[SerializeField]
 		private CustomProjectWindow projectWindow = new CustomProjectWindow();
 		private bool showProjectWindow;
+		private bool syncProjectWindowSelection;
 
 		private bool shouldRepositionSelf;
 		private bool shouldRepaint;
@@ -132,6 +135,7 @@ namespace InspectPlusNamespace
 			showFavorites = InspectPlusSettings.Instance.ShowFavoritesByDefault;
 			showHistory = InspectPlusSettings.Instance.ShowHistoryByDefault;
 			showPreview = InspectPlusSettings.Instance.ShowPreviewByDefault;
+			syncProjectWindowSelection = InspectPlusSettings.Instance.SyncProjectWindowSelection;
 
 			// Window is restored after Unity is closed and then reopened
 			if( history.Count > 0 )
@@ -154,27 +158,18 @@ namespace InspectPlusNamespace
 			Undo.undoRedoPerformed -= OnUndoRedo;
 			Undo.undoRedoPerformed += OnUndoRedo;
 
-			// Make sure that debug mode drawers are recreated
-			if( inspectorDrawerCount > 0 )
+			if( mainObject )
 			{
-				try
-				{
-					if( inspectorDrawers[0].target )
-						InspectInternal( inspectorDrawers[0].target, false );
-					else
-					{
-						for( int i = 0; i < inspectorDrawers.Count; i++ )
-							DestroyImmediate( inspectorDrawers[i] );
+				// This also makes sure that debug mode drawers are recreated
+				InspectInternal( mainObject, false );
+			}
+			else
+			{
+				for( int i = 0; i < inspectorDrawers.Count; i++ )
+					DestroyImmediate( inspectorDrawers[i] );
 
-						inspectorDrawers.Clear();
-						inspectorDrawerCount = 0;
-					}
-				}
-				catch( NullReferenceException )
-				{
-					// Some Editors (like folder editors) might throw NullReferenceException when accessing 'target' in OnEnable
-					InspectInternal( mainObject, false );
-				}
+				inspectorDrawers.Clear();
+				inspectorDrawerCount = 0;
 			}
 
 			historyHolder.Add( history );
@@ -203,8 +198,6 @@ namespace InspectPlusNamespace
 
 			inspectorDrawers.Clear();
 			inspectorDrawerCount = 0;
-
-			mainObject = null;
 		}
 
 		private void OnFocus()
@@ -379,6 +372,20 @@ namespace InspectPlusNamespace
 			menu.AddItem( new GUIContent( "Debug Mode" ), debugMode, () => debugMode = !debugMode );
 			menu.AddSeparator( "" );
 
+			if( showProjectWindow )
+			{
+				menu.AddItem( new GUIContent( "Synchronize Selection" ), syncProjectWindowSelection, () =>
+				{
+					syncProjectWindowSelection = !syncProjectWindowSelection;
+
+					CustomProjectWindowDrawer treeView = projectWindow.GetTreeView();
+					if( treeView != null )
+						treeView.SyncSelection = syncProjectWindowSelection;
+				} );
+
+				menu.AddSeparator( "" );
+			}
+
 			menu.AddItem( new GUIContent( "Clear Favorites" ), false, () =>
 			{
 				InspectPlusSettings.Instance.FavoriteAssets.Clear();
@@ -434,6 +441,34 @@ namespace InspectPlusNamespace
 						windows[i].Close();
 				}
 			} );
+		}
+
+		private void OnScrollViewIconRightClicked( GenericMenu menu, List<List<Object>> lists )
+		{
+			List<Object> allObjects = new List<Object>( 8 );
+			for( int i = 0; i < lists.Count; i++ )
+			{
+				List<Object> list = lists[i];
+				for( int j = 0; j < list.Count; j++ )
+				{
+					if( !list[j] )
+						continue;
+
+					// Insert object into sorted list
+					// Credit: https://stackoverflow.com/a/12172412/2373034
+					int index = allObjects.BinarySearch( list[j], Utilities.unityObjectComparer );
+					if( index < 0 )
+						index = ~index;
+
+					allObjects.Insert( index, list[j] );
+				}
+			}
+
+			for( int i = 0; i < allObjects.Count; i++ )
+			{
+				Object obj = allObjects[i];
+				menu.AddItem( new GUIContent( string.Concat( obj.name, " (", obj.GetType().Name, ")" ) ), false, () => pendingInspectTarget = obj );
+			}
 		}
 
 		private void OnScrollViewButtonRightClicked( GenericMenu menu, List<Object> list, int index )
@@ -582,6 +617,8 @@ namespace InspectPlusNamespace
 			if( !string.IsNullOrEmpty( assetPath ) && AssetDatabase.IsValidFolder( assetPath ) )
 			{
 				projectWindow.Show( assetPath );
+				projectWindow.GetTreeView().SyncSelection = syncProjectWindowSelection;
+
 				showProjectWindow = true;
 			}
 			else
@@ -762,6 +799,14 @@ namespace InspectPlusNamespace
 				{
 					GUILayout.Space( -4 ); // Get rid of the free space above the project window's header
 					projectWindow.OnGUI();
+
+					// This happens only when the mouse click is not captured by project window's TreeView
+					// In this case, clear project window's selection
+					if( ev.type == EventType.MouseDown && ev.button == 0 )
+					{
+						projectWindow.GetTreeView().SetSelection( new int[0] );
+						shouldRepaint = true;
+					}
 				}
 
 				if( showPreview )
@@ -799,6 +844,14 @@ namespace InspectPlusNamespace
 
 			GUILayout.BeginHorizontal();
 			GUILayout.Label( icon, scrollableListIconGuiStyle, scrollableListIconSize, height );
+			if( ev.type == EventType.ContextClick && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+			{
+				GenericMenu menu = new GenericMenu();
+				OnScrollViewIconRightClicked( menu, lists );
+				if( menu.GetItemCount() > 0 )
+					menu.ShowAsContext();
+			}
+
 			scrollPosition = GUILayout.BeginScrollView( scrollPosition, height );
 			GUILayout.BeginHorizontal();
 
@@ -948,8 +1001,10 @@ namespace InspectPlusNamespace
 					if( GUIUtility.hotControl == controlID )
 					{
 						GUIUtility.hotControl = 0;
-						result = (ButtonState) ev.button;
 						shouldRepaint = true;
+
+						if( rect.Contains( ev.mousePosition ) )
+							result = (ButtonState) ev.button;
 					}
 					break;
 				case EventType.Repaint:

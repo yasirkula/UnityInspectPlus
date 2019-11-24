@@ -40,6 +40,11 @@ namespace InspectPlusNamespace.Extras
 			rootDirectory = directory;
 		}
 
+		public CustomProjectWindowDrawer GetTreeView()
+		{
+			return treeView;
+		}
+
 		public void Refresh()
 		{
 			if( treeView != null )
@@ -64,11 +69,6 @@ namespace InspectPlusNamespace.Extras
 
 			rect = GUILayoutUtility.GetRect( 0, 100000, 0, 100000 );
 			treeView.OnGUI( rect );
-
-			// This happens only when the mouse click is not captured by TreeView
-			Event e = Event.current;
-			if( e.type == EventType.MouseDown && e.button == 0 )
-				treeView.SetSelection( new int[0] );
 		}
 	}
 
@@ -120,6 +120,8 @@ namespace InspectPlusNamespace.Extras
 		private readonly CompareOptions textCompareOptions;
 
 		private bool isSearching;
+
+		public bool SyncSelection;
 
 		public CustomProjectWindowDrawer( TreeViewState state, string rootDirectory ) : base( state )
 		{
@@ -309,14 +311,13 @@ namespace InspectPlusNamespace.Extras
 
 		protected override void SelectionChanged( IList<int> selectedIds )
 		{
-			if( selectedIds == null )
+			if( !SyncSelection || selectedIds == null )
 				return;
 
-			int[] result = new int[selectedIds.Count];
-			for( int i = 0; i < selectedIds.Count; i++ )
-				result[i] = selectedIds[i];
+			int[] selectionArray = new int[selectedIds.Count];
+			selectedIds.CopyTo( selectionArray, 0 );
 
-			Selection.instanceIDs = result;
+			Selection.instanceIDs = selectionArray;
 		}
 
 		protected override bool CanRename( TreeViewItem item )
@@ -344,6 +345,7 @@ namespace InspectPlusNamespace.Extras
 
 		protected override void ContextClickedItem( int id )
 		{
+			ChangeUnitySelection();
 			EditorUtility.DisplayPopupMenu( new Rect( Event.current.mousePosition, new Vector2( 0f, 0f ) ), "Assets/", null );
 			Event.current.Use();
 		}
