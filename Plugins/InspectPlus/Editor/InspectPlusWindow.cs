@@ -72,6 +72,7 @@ namespace InspectPlusNamespace
 
 		private bool shouldRepositionSelf;
 		private bool shouldRepaint;
+		private bool snapFavoritesToActiveObject;
 		private bool snapHistoryToActiveObject;
 		private Object pendingInspectTarget;
 		private float pendingScrollAmount;
@@ -467,8 +468,26 @@ namespace InspectPlusNamespace
 			for( int i = 0; i < allObjects.Count; i++ )
 			{
 				Object obj = allObjects[i];
-				menu.AddItem( new GUIContent( string.Concat( obj.name, " (", obj.GetType().Name, ")" ) ), false, () => pendingInspectTarget = obj );
+				menu.AddItem( new GUIContent( string.Concat( obj.name, " (", obj.GetType().Name, ")" ) ), false, () =>
+				{
+					pendingInspectTarget = obj;
+
+					if( lists == favoritesHolder )
+						snapFavoritesToActiveObject = true;
+					else
+						snapHistoryToActiveObject = true;
+				} );
 			}
+
+			menu.AddSeparator( "" );
+
+			menu.AddItem( new GUIContent( "Hide" ), false, () =>
+			{
+				if( lists == favoritesHolder )
+					showFavorites = false;
+				else
+					showHistory = false;
+			} );
 		}
 
 		private void OnScrollViewButtonRightClicked( GenericMenu menu, List<Object> list, int index )
@@ -710,7 +729,10 @@ namespace InspectPlusNamespace
 
 			Event ev = Event.current;
 			if( ev.type == EventType.ScrollWheel )
+			{
 				pendingScrollAmount = ev.delta.y * HORIZONTAL_SCROLL_SPEED;
+				shouldRepaint = true;
+			}
 
 			if( showFavorites )
 			{
@@ -848,8 +870,7 @@ namespace InspectPlusNamespace
 			{
 				GenericMenu menu = new GenericMenu();
 				OnScrollViewIconRightClicked( menu, lists );
-				if( menu.GetItemCount() > 0 )
-					menu.ShowAsContext();
+				menu.ShowAsContext();
 			}
 
 			scrollPosition = GUILayout.BeginScrollView( scrollPosition, height );
@@ -863,12 +884,7 @@ namespace InspectPlusNamespace
 				for( int j = 0; j < list.Count; j++ )
 				{
 					if( list[j] == mainObject )
-					{
 						GUI.backgroundColor = activeButtonColor;
-
-						if( snapHistoryToActiveObject && !drawingFavorites && ev.type == EventType.Repaint )
-							snapTargetPos = j > 0 ? GUILayoutUtility.GetLastRect().xMax : 0f;
-					}
 
 					if( ReferenceEquals( list[j], null ) )
 					{
@@ -896,6 +912,12 @@ namespace InspectPlusNamespace
 							break;
 					}
 
+					if( ev.type == EventType.Repaint && list[j] == mainObject )
+					{
+						if( ( snapHistoryToActiveObject && !drawingFavorites ) || ( snapFavoritesToActiveObject && drawingFavorites ) )
+							snapTargetPos = j > 0 ? GUILayoutUtility.GetLastRect().x : 0f;
+					}
+
 					GUI.backgroundColor = backgroundColor;
 				}
 			}
@@ -906,7 +928,11 @@ namespace InspectPlusNamespace
 
 			if( snapTargetPos.HasValue )
 			{
-				snapHistoryToActiveObject = false;
+				if( drawingFavorites )
+					snapFavoritesToActiveObject = false;
+				else
+					snapHistoryToActiveObject = false;
+
 				shouldRepaint = true;
 
 				scrollPosition.x = snapTargetPos.Value;
