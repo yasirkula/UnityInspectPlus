@@ -9,6 +9,8 @@ using UnityEngine;
 
 namespace InspectPlusNamespace.Extras
 {
+	public delegate void ProjectWindowSelectionChangedDelegate( IList<int> newSelection );
+
 	[System.Serializable]
 	public class CustomProjectWindow
 	{
@@ -21,6 +23,8 @@ namespace InspectPlusNamespace.Extras
 		private SearchField searchField;
 		private GUIContent createButtonContent;
 
+		public ProjectWindowSelectionChangedDelegate OnSelectionChanged;
+
 		public void Show( string directory )
 		{
 			if( treeView != null && rootDirectory == directory )
@@ -32,7 +36,15 @@ namespace InspectPlusNamespace.Extras
 			if( treeViewState == null || rootDirectory != directory )
 				treeViewState = new TreeViewState();
 
-			treeView = new CustomProjectWindowDrawer( treeViewState, directory );
+			treeView = new CustomProjectWindowDrawer( treeViewState, directory )
+			{
+				OnSelectionChanged = ( newSelection ) =>
+				{
+					if( OnSelectionChanged != null )
+						OnSelectionChanged( newSelection );
+				}
+			};
+
 			searchField = new SearchField();
 			searchField.downOrUpArrowKeyPressed += treeView.SetFocusAndEnsureSelectedItem;
 
@@ -121,6 +133,7 @@ namespace InspectPlusNamespace.Extras
 
 		private bool isSearching;
 
+		public ProjectWindowSelectionChangedDelegate OnSelectionChanged;
 		public bool SyncSelection;
 
 		public CustomProjectWindowDrawer( TreeViewState state, string rootDirectory ) : base( state )
@@ -311,6 +324,16 @@ namespace InspectPlusNamespace.Extras
 
 		protected override void SelectionChanged( IList<int> selectedIds )
 		{
+			try
+			{
+				if( OnSelectionChanged != null )
+					OnSelectionChanged( selectedIds );
+			}
+			catch( System.Exception e )
+			{
+				Debug.LogException( e );
+			}
+
 			if( !SyncSelection || selectedIds == null )
 				return;
 

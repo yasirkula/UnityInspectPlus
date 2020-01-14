@@ -7,6 +7,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
+#if UNITY_2017_1_OR_NEWER
+using UnityEditor.Experimental.AssetImporters;
+#endif
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
@@ -15,14 +18,27 @@ namespace InspectPlusNamespace
 {
 	public class InspectPlusWindow : EditorWindow, IHasCustomMenu
 	{
+		private class DummyLogHandler : ILogHandler
+		{
+			public void LogException( Exception exception, Object context ) { }
+			public void LogFormat( LogType logType, Object context, string format, params object[] args ) { }
+		}
+
 		private enum ButtonState { Normal = -1, LeftClicked = 0, RightClicked = 1, MiddleClicked = 2 };
 
 		private const string NEW_TAB_LABEL = "Open In New Tab";
 		private const string NEW_WINDOW_LABEL = "Open In New Window";
 		private const float BUTTON_DRAG_THRESHOLD_SQR = 600f;
-		private const float HORIZONTAL_SCROLL_SPEED = 5f;
+		private const float HORIZONTAL_SCROLL_SPEED = 10f;
 		private const float SCROLLABLE_LIST_ICON_WIDTH = 34f;
 		private const float FAVORITES_REFRESH_INTERVAL = 0.5f;
+		private const float ANIMATION_PLAYBACK_REFRESH_INTERVAL = 0.15f;
+		private const float PREVIEW_HEADER_HEIGHT = 21f;
+		private const float PREVIEW_HEADER_PADDING = 5f;
+		private const float PREVIEW_INITIAL_HEIGHT = 250f;
+		private const float PREVIEW_MIN_HEIGHT = 130f;
+		private const float PREVIEW_COLLAPSE_HEIGHT = PREVIEW_MIN_HEIGHT * 0.5f;
+		private const string PREVIEW_HEIGHT_PREF = "IPPreviewHeight";
 #if APPLY_HORIZONTAL_PADDING
 		private const float INSPECTOR_HORIZONTAL_PADDING = 5f;
 #endif
@@ -41,12 +57,13 @@ namespace InspectPlusNamespace
 		private static readonly GUILayoutOption expandWidth = GUILayout.ExpandWidth( true );
 		private static readonly GUILayoutOption expandHeight = GUILayout.ExpandHeight( true );
 
-		private static readonly Color activeButtonColor = new Color32( 245, 170, 10, 255 );
-
 		private static readonly List<Component> components = new List<Component>( 16 );
 		private static readonly Dictionary<Type, bool> componentsExpandableStates = new Dictionary<Type, bool>( 128 );
 		private static readonly GUIStyle scrollableListIconGuiStyle = new GUIStyle();
 		private static readonly GUIContent textSizeCalculator = new GUIContent();
+
+		private static readonly DummyLogHandler dummyLogHandler = new DummyLogHandler();
+		private static readonly Color activeButtonColor = new Color32( 245, 170, 10, 255 );
 
 		private static object clipboard;
 
@@ -63,12 +80,23 @@ namespace InspectPlusNamespace
 
 		private List<Editor> inspectorDrawers = new List<Editor>( 16 );
 		private int inspectorDrawerCount;
+		private int debugModeDrawerCount;
+
+#if UNITY_2017_1_OR_NEWER
+		private AssetImporterEditor inspectorAssetDrawer;
+#else
+		private Editor inspectorAssetDrawer;
+		private static Type assetImporterEditorType;
+		private static PropertyInfo assetImporterShowImportedObjectProperty;
+#endif
+		private static FieldInfo assetImporterEditorField;
 
 		// Serializing CustomProjectWindow makes the TreeView's state (collapsed entries etc.) persist between editor sessions
 		[SerializeField]
 		private CustomProjectWindow projectWindow = new CustomProjectWindow();
 		private bool showProjectWindow;
 		private bool syncProjectWindowSelection;
+		private Editor projectWindowSelectionEditor;
 
 		private bool shouldRepositionSelf;
 		private bool shouldRepaint;
@@ -78,9 +106,17 @@ namespace InspectPlusNamespace
 		private float pendingScrollAmount;
 		private Vector2 buttonPressPosition;
 		private double nextUpdateTime;
+		private double nextAnimationRepaintTime;
 
-		private bool showFavorites, showHistory, showPreview;
+		private bool showFavorites, showHistory;
 		private Vector2 favoritesScrollPosition, historyScrollPosition, inspectorScrollPosition;
+
+		private float previewHeight;
+		private float previewLastHeight;
+		private bool previewHeaderClicked;
+		private GUIStyle previewHeaderGuiStyle;
+		private GUIStyle previewResizeAreaGuiStyle;
+		private GUIStyle previewBackgroundGuiStyle;
 
 		private bool debugMode;
 		private double debugModeRefreshTime;
@@ -92,7 +128,7 @@ namespace InspectPlusNamespace
 
 		private GUILayoutOption favoritesHeight;
 		private GUILayoutOption historyHeight;
-		private GUILayoutOption previewHeight;
+		private GUILayoutOption previewHeaderHeight;
 		private GUILayoutOption scrollableListIconSize;
 
 		#region Initializers
@@ -103,7 +139,7 @@ namespace InspectPlusNamespace
 		//}
 
 		[InitializeOnLoadMethod]
-		private static void InitializeExtensions()
+		private static void Initialize()
 		{
 			Type addComponentWindow = typeof( EditorWindow ).Assembly.GetType( "UnityEditor.AddComponentWindow" );
 			if( addComponentWindow == null )
@@ -118,6 +154,14 @@ namespace InspectPlusNamespace
 				Debug.LogWarning( "Couldn't fetch Add Component button" );
 				addComponentButton = null;
 			}
+
+#if UNITY_2017_1_OR_NEWER
+			assetImporterEditorField = typeof( AssetImporterEditor ).GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
+#else
+			assetImporterEditorType = typeof( EditorApplication ).Assembly.GetType( "UnityEditor.AssetImporterInspector" );
+			assetImporterShowImportedObjectProperty = assetImporterEditorType.GetProperty( "showImportedObject", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
+			assetImporterEditorField = assetImporterEditorType.GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
+#endif
 
 			favoritesIcon = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture, "Favorites" );
 			historyIcon = new GUIContent( EditorGUIUtility.Load( "Search Icon" ) as Texture, "History" );
@@ -135,7 +179,6 @@ namespace InspectPlusNamespace
 
 			showFavorites = InspectPlusSettings.Instance.ShowFavoritesByDefault;
 			showHistory = InspectPlusSettings.Instance.ShowHistoryByDefault;
-			showPreview = InspectPlusSettings.Instance.ShowPreviewByDefault;
 			syncProjectWindowSelection = InspectPlusSettings.Instance.SyncProjectWindowSelection;
 
 			// Window is restored after Unity is closed and then reopened
@@ -171,10 +214,22 @@ namespace InspectPlusNamespace
 
 				inspectorDrawers.Clear();
 				inspectorDrawerCount = 0;
+				debugModeDrawerCount = 0;
+
+				DestroyImmediate( projectWindowSelectionEditor );
+				projectWindowSelectionEditor = null;
+
+				previewHeight = EditorPrefs.GetFloat( PREVIEW_HEIGHT_PREF, PREVIEW_INITIAL_HEIGHT );
 			}
+
+			previewLastHeight = previewHeight >= PREVIEW_MIN_HEIGHT ? previewHeight : PREVIEW_INITIAL_HEIGHT;
 
 			historyHolder.Add( history );
 			favoritesHolder.Add( InspectPlusSettings.Instance.FavoriteAssets );
+
+			projectWindow.OnSelectionChanged = ProjectWindowSelectionChanged;
+			if( projectWindow.GetTreeView() != null )
+				ProjectWindowSelectionChanged( projectWindow.GetTreeView().GetSelection() );
 
 			RefreshSettings();
 		}
@@ -199,6 +254,10 @@ namespace InspectPlusNamespace
 
 			inspectorDrawers.Clear();
 			inspectorDrawerCount = 0;
+			debugModeDrawerCount = 0;
+
+			DestroyImmediate( projectWindowSelectionEditor );
+			projectWindowSelectionEditor = null;
 		}
 
 		private void OnFocus()
@@ -215,7 +274,7 @@ namespace InspectPlusNamespace
 		{
 			favoritesHeight = GUILayout.Height( InspectPlusSettings.Instance.FavoritesHeight );
 			historyHeight = GUILayout.Height( InspectPlusSettings.Instance.HistoryHeight );
-			previewHeight = GUILayout.Height( InspectPlusSettings.Instance.PreviewHeight );
+			previewHeaderHeight = GUILayout.Height( PREVIEW_HEADER_HEIGHT );
 			scrollableListIconSize = GUILayout.Width( Mathf.Min( SCROLLABLE_LIST_ICON_WIDTH, InspectPlusSettings.Instance.FavoritesHeight, InspectPlusSettings.Instance.HistoryHeight ) );
 
 			shouldRepaint = true;
@@ -367,7 +426,6 @@ namespace InspectPlusNamespace
 		{
 			menu.AddItem( new GUIContent( "Show Favorites" ), showFavorites, () => showFavorites = !showFavorites );
 			menu.AddItem( new GUIContent( "Show History" ), showHistory, () => showHistory = !showHistory );
-			menu.AddItem( new GUIContent( "Show Preview" ), showPreview, () => showPreview = !showPreview );
 			menu.AddSeparator( "" );
 
 			menu.AddItem( new GUIContent( "Debug Mode" ), debugMode, () => debugMode = !debugMode );
@@ -606,24 +664,107 @@ namespace InspectPlusNamespace
 			if( !obj )
 				return;
 
+			string assetPath = AssetDatabase.GetAssetPath( obj );
+
 			inspectorDrawerCount = 0;
+			debugModeDrawerCount = 0;
 			debugModeRefreshTime = 0f;
 
-			if( obj is GameObject )
+#if UNITY_2017_1_OR_NEWER
+			AssetImporterEditor _inspectorAssetDrawer = null;
+#else
+			Editor _inspectorAssetDrawer = null;
+#endif
+			if( !string.IsNullOrEmpty( assetPath ) && AssetDatabase.IsMainAsset( obj ) && !AssetDatabase.IsValidFolder( assetPath ) )
 			{
-				components.Clear();
-				( (GameObject) obj ).GetComponents( components );
-
-				CreateEditorFor( obj );
-
-				for( int i = 0; i < components.Count; i++ )
+				if( inspectorAssetDrawer )
 				{
-					if( components[i] )
-						CreateEditorFor( components[i] );
+					AssetImporter assetImporter = inspectorAssetDrawer.target as AssetImporter;
+					if( assetImporter && assetImporter.assetPath == assetPath )
+						_inspectorAssetDrawer = inspectorAssetDrawer;
+				}
+
+				if( !_inspectorAssetDrawer )
+				{
+					AssetImporter assetImporter = AssetImporter.GetAtPath( AssetDatabase.GetAssetPath( obj ) );
+					if( assetImporter )
+					{
+#if UNITY_2017_1_OR_NEWER
+						ILogHandler unityLogHandler = Debug.unityLogger.logHandler;
+#else
+						ILogHandler unityLogHandler = Debug.logger.logHandler;
+#endif
+						Editor assetImporterEditor;
+						try
+						{
+							// Creating AssetImporterEditors manually doesn't set the editor's "m_AssetEditor" field automatically for some reason,
+							// it can result in exceptions being thrown in the AssetImporterEditors' Awake and/or OnEnable functions, ignore them
+#if UNITY_2017_1_OR_NEWER
+							Debug.unityLogger.logHandler = dummyLogHandler;
+#else
+							Debug.logger.logHandler = dummyLogHandler;
+#endif
+							assetImporterEditor = Editor.CreateEditor( assetImporter );
+						}
+						finally
+						{
+#if UNITY_2017_1_OR_NEWER
+							Debug.unityLogger.logHandler = unityLogHandler;
+#else
+							Debug.logger.logHandler = unityLogHandler;
+#endif
+						}
+
+						if( assetImporterEditor )
+						{
+#if UNITY_2017_1_OR_NEWER
+							_inspectorAssetDrawer = assetImporterEditor as AssetImporterEditor;
+#else
+							if( assetImporterEditorType.IsAssignableFrom( assetImporterEditor.GetType() ) )
+								_inspectorAssetDrawer = assetImporterEditor;
+#endif
+						}
+
+						if( !_inspectorAssetDrawer )
+							DestroyImmediate( assetImporterEditor );
+						else
+						{
+							Editor objEditor = Editor.CreateEditor( obj );
+							if( objEditor )
+								assetImporterEditorField.SetValue( _inspectorAssetDrawer, objEditor );
+						}
+					}
 				}
 			}
-			else
-				CreateEditorFor( obj );
+
+			if( inspectorAssetDrawer != _inspectorAssetDrawer )
+			{
+				DestroyImmediate( inspectorAssetDrawer );
+				inspectorAssetDrawer = _inspectorAssetDrawer;
+			}
+
+#if UNITY_2017_1_OR_NEWER
+			if( !inspectorAssetDrawer || inspectorAssetDrawer.showImportedObject )
+#else
+			if( !inspectorAssetDrawer || (bool) assetImporterShowImportedObjectProperty.GetValue( inspectorAssetDrawer, null ) )
+#endif
+			{
+				if( obj is GameObject )
+				{
+					components.Clear();
+					( (GameObject) obj ).GetComponents( components );
+
+					CreateEditorFor( obj );
+
+					for( int i = 0; i < components.Count; i++ )
+					{
+						if( components[i] )
+							CreateEditorFor( components[i] );
+					}
+				}
+				else
+					CreateEditorFor( obj );
+			}
 
 			for( int i = inspectorDrawers.Count - 1; i >= inspectorDrawerCount; i-- )
 			{
@@ -631,8 +772,10 @@ namespace InspectPlusNamespace
 				inspectorDrawers.RemoveAt( i );
 			}
 
+			if( inspectorDrawerCount > 0 || inspectorAssetDrawer )
+				mainObject = obj;
+
 			// Show a project window instance while inspecting a directory
-			string assetPath = AssetDatabase.GetAssetPath( obj );
 			if( !string.IsNullOrEmpty( assetPath ) && AssetDatabase.IsValidFolder( assetPath ) )
 			{
 				projectWindow.Show( assetPath );
@@ -682,7 +825,7 @@ namespace InspectPlusNamespace
 
 			if( debugMode && time >= debugModeRefreshTime )
 			{
-				for( int i = 0; i < inspectorDrawerCount; i++ )
+				for( int i = 0; i < debugModeDrawerCount; i++ )
 					debugModeDrawers[i].Refresh();
 
 				shouldRepaint = true;
@@ -697,6 +840,17 @@ namespace InspectPlusNamespace
 					favoritesHolder.Add( SceneFavoritesHolder.Instances[i].FavoriteObjects );
 
 				favoritesRefreshTime = time + FAVORITES_REFRESH_INTERVAL;
+			}
+
+#if UNITY_2017_1_OR_NEWER
+			if( inspectorAssetDrawer && inspectorAssetDrawer.RequiresConstantRepaint() )
+				shouldRepaint = true;
+#endif
+
+			if( AnimationMode.InAnimationMode() && time >= nextAnimationRepaintTime )
+			{
+				shouldRepaint = true;
+				nextAnimationRepaintTime = time + ANIMATION_PLAYBACK_REFRESH_INTERVAL;
 			}
 
 			if( shouldRepositionSelf )
@@ -722,11 +876,35 @@ namespace InspectPlusNamespace
 				projectWindow.Refresh();
 		}
 
+		private void ProjectWindowSelectionChanged( IList<int> newSelection )
+		{
+			DestroyImmediate( projectWindowSelectionEditor );
+			projectWindowSelectionEditor = null;
+
+			if( newSelection != null && newSelection.Count > 0 )
+			{
+				Object[] selection = new Object[newSelection.Count];
+				for( int i = 0; i < selection.Length; i++ )
+				{
+					Object obj = EditorUtility.InstanceIDToObject( newSelection[i] );
+					if( !obj || ( i > 0 && selection[0].GetType() != obj.GetType() ) ) // All objects must be of same type
+						return;
+
+					selection[i] = obj;
+				}
+
+				projectWindowSelectionEditor = Editor.CreateEditor( selection );
+				if( projectWindowSelectionEditor && !projectWindowSelectionEditor.HasPreviewGUI() )
+				{
+					DestroyImmediate( projectWindowSelectionEditor );
+					projectWindowSelectionEditor = null;
+				}
+			}
+		}
+
 		#region GUI Functions
 		private void OnGUI()
 		{
-			mainObject = inspectorDrawerCount > 0 ? inspectorDrawers[0].target : null;
-
 			Event ev = Event.current;
 			if( ev.type == EventType.ScrollWheel )
 			{
@@ -777,44 +955,65 @@ namespace InspectPlusNamespace
 			{
 				GUILayout.Box( "(F)ield, (P)roperty, (S)tatic, (O)bsolete\n(+)Public, (#)Protected/Internal, (-)Private", expandWidth );
 
-				for( int i = 0; i < inspectorDrawerCount; i++ )
+				for( int i = 0; i < debugModeDrawerCount; i++ )
 					debugModeDrawers[i].DrawOnGUI();
 			}
 			else
 			{
-				Editor firstDrawer = inspectorDrawers[0];
-				firstDrawer.DrawHeader();
-				firstDrawer.OnInspectorGUI();
+				GUILayout.Space( 0 ); // Somehow gets rid of the free space above the inspector header
 
-				for( int i = 1; i < inspectorDrawerCount; i++ )
+				if( inspectorAssetDrawer )
 				{
-					Object targetObject = inspectorDrawers[i].target;
-					if( targetObject )
-					{
-						bool wasVisible = UnityEditorInternal.InternalEditorUtility.GetIsInspectorExpanded( targetObject );
-						bool isVisible = EditorGUILayout.InspectorTitlebar( wasVisible, targetObject, ShouldShowFoldoutFor( targetObject ) );
-						if( wasVisible != isVisible )
-							UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded( targetObject, isVisible );
+					inspectorAssetDrawer.DrawHeader();
+					inspectorAssetDrawer.OnInspectorGUI();
 
-						if( isVisible )
-							inspectorDrawers[i].OnInspectorGUI();
+					if( inspectorDrawerCount > 0 )
+					{
+						GUILayout.Space( 30 );
+
+						Rect importedObjectHeaderRect = GUILayoutUtility.GetRect( 0, 100000, 21f, 21f );
+						GUI.Box( importedObjectHeaderRect, "Imported Object" );
+
+						GUILayout.Space( -7 ); // Get rid of the space before the firstDrawer's header
 					}
 				}
 
-				// Show Add Component button
-				if( addComponentButton != null && mainObject is GameObject )
+				if( inspectorDrawerCount > 0 )
 				{
-					GUILayout.Space( 5 );
-					DrawHorizontalLine();
+					Editor firstDrawer = inspectorDrawers[0];
+					firstDrawer.DrawHeader();
+					firstDrawer.OnInspectorGUI();
 
-					Rect rect = GUILayoutUtility.GetRect( addComponentButtonLabel, GUI.skin.button, addComponentButtonHeight );
-					if( EditorGUI.DropdownButton( rect, addComponentButtonLabel, FocusType.Passive, GUI.skin.button ) )
+					for( int i = 1; i < inspectorDrawerCount; i++ )
 					{
-						if( (bool) addComponentButton.Invoke( null, new object[2] { rect, new GameObject[1] { (GameObject) mainObject } } ) )
-							GUIUtility.ExitGUI();
+						Object targetObject = inspectorDrawers[i].target;
+						if( targetObject )
+						{
+							bool wasVisible = UnityEditorInternal.InternalEditorUtility.GetIsInspectorExpanded( targetObject );
+							bool isVisible = EditorGUILayout.InspectorTitlebar( wasVisible, targetObject, ShouldShowFoldoutFor( targetObject ) );
+							if( wasVisible != isVisible )
+								UnityEditorInternal.InternalEditorUtility.SetIsInspectorExpanded( targetObject, isVisible );
+
+							if( isVisible )
+								inspectorDrawers[i].OnInspectorGUI();
+						}
 					}
 
-					GUILayout.Space( 5 );
+					// Show Add Component button
+					if( addComponentButton != null && mainObject is GameObject )
+					{
+						GUILayout.Space( 5 );
+						DrawHorizontalLine();
+
+						Rect rect = GUILayoutUtility.GetRect( addComponentButtonLabel, GUI.skin.button, addComponentButtonHeight );
+						if( EditorGUI.DropdownButton( rect, addComponentButtonLabel, FocusType.Passive, GUI.skin.button ) )
+						{
+							if( (bool) addComponentButton.Invoke( null, new object[2] { rect, new GameObject[1] { (GameObject) mainObject } } ) )
+								GUIUtility.ExitGUI();
+						}
+
+						GUILayout.Space( 5 );
+					}
 				}
 
 				if( showProjectWindow )
@@ -827,19 +1026,9 @@ namespace InspectPlusNamespace
 					if( ev.type == EventType.MouseDown && ev.button == 0 )
 					{
 						projectWindow.GetTreeView().SetSelection( new int[0] );
-						shouldRepaint = true;
-					}
-				}
+						ProjectWindowSelectionChanged( null );
 
-				if( showPreview )
-				{
-					for( int i = 0; i < inspectorDrawerCount; i++ )
-					{
-						if( inspectorDrawers[i].HasPreviewGUI() )
-						{
-							inspectorDrawers[i].DrawPreview( EditorGUILayout.GetControlRect( expandWidth, previewHeight ) );
-							break;
-						}
+						shouldRepaint = true;
 					}
 				}
 			}
@@ -851,6 +1040,31 @@ namespace InspectPlusNamespace
 #endif
 
 			EditorGUILayout.EndScrollView();
+
+			if( !debugMode )
+			{
+				if( !showProjectWindow )
+				{
+					if( inspectorAssetDrawer && inspectorAssetDrawer.HasPreviewGUI() )
+						DrawPreview( inspectorAssetDrawer );
+					else
+					{
+						for( int i = 0; i < inspectorDrawerCount; i++ )
+						{
+							if( inspectorDrawers[i].HasPreviewGUI() )
+							{
+								DrawPreview( inspectorDrawers[i] );
+								break;
+							}
+						}
+					}
+				}
+				else
+				{
+					if( projectWindowSelectionEditor && projectWindowSelectionEditor.HasPreviewGUI() )
+						DrawPreview( projectWindowSelectionEditor );
+				}
+			}
 		}
 
 		private Vector2 DrawScrollableList( bool drawingFavorites )
@@ -985,7 +1199,11 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			DrawHorizontalLine();
+			Rect separatorLineRect = GUILayoutUtility.GetLastRect();
+			separatorLineRect.y = separatorLineRect.yMax;
+			separatorLineRect.height = 1f;
+			EditorGUI.DrawRect( separatorLineRect, Color.black );
+
 			return scrollPosition;
 		}
 
@@ -1042,6 +1260,124 @@ namespace InspectPlusNamespace
 				ev.Use();
 
 			return result;
+		}
+
+		// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/Inspector/InspectorWindow.cs
+		private void DrawPreview( Editor editor )
+		{
+			Event ev = Event.current;
+
+			// Leave blank area between the preview and the inspector, if possible
+			GUILayout.FlexibleSpace();
+
+			if( previewHeaderGuiStyle == null )
+			{
+				previewHeaderGuiStyle = GUI.skin.FindStyle( "preToolbar" );
+				previewResizeAreaGuiStyle = GUI.skin.FindStyle( "RL DragHandle" );
+				previewBackgroundGuiStyle = GUI.skin.FindStyle( "preBackground" );
+
+				if( previewHeaderGuiStyle == null )
+					previewHeaderGuiStyle = EditorStyles.toolbar;
+				if( previewResizeAreaGuiStyle == null )
+					previewResizeAreaGuiStyle = EditorStyles.helpBox;
+				if( previewBackgroundGuiStyle == null )
+					previewBackgroundGuiStyle = EditorStyles.toolbar;
+			}
+
+			Rect headerRect = EditorGUILayout.BeginHorizontal( previewHeaderGuiStyle, previewHeaderHeight );
+
+			// This flexible space is the preview resize area
+			GUILayout.FlexibleSpace();
+			Rect dragRect = GUILayoutUtility.GetLastRect();
+			dragRect.height = PREVIEW_HEADER_HEIGHT;
+
+			if( ev.type == EventType.Repaint )
+			{
+				Rect dragIconRect = new Rect( dragRect.x + PREVIEW_HEADER_PADDING, dragRect.y + ( PREVIEW_HEADER_HEIGHT - previewResizeAreaGuiStyle.fixedHeight ) * 0.5f - 1f,
+					dragRect.width - 2f * PREVIEW_HEADER_PADDING, previewResizeAreaGuiStyle.fixedHeight );
+
+				previewResizeAreaGuiStyle.Draw( dragIconRect, GUIContent.none, false, false, false, false );
+			}
+
+			if( previewHeight >= PREVIEW_MIN_HEIGHT )
+				editor.OnPreviewSettings();
+
+			EditorGUILayout.EndHorizontal();
+
+			// Draw preview resize area
+			// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/GUI/PreviewResizer.cs
+			int controlID = 1453541; // Magic unique(ish) number
+			switch( ev.GetTypeForControl( controlID ) )
+			{
+				case EventType.MouseDown:
+					if( dragRect.Contains( ev.mousePosition ) )
+					{
+						GUIUtility.hotControl = controlID;
+						previewHeaderClicked = true;
+
+						ev.Use();
+					}
+
+					break;
+				case EventType.MouseDrag:
+					if( GUIUtility.hotControl == controlID )
+					{
+						previewHeight = position.yMax - GUIUtility.GUIToScreenPoint( ev.mousePosition ).y;
+						if( previewHeight < PREVIEW_MIN_HEIGHT )
+							previewHeight = previewHeight < PREVIEW_COLLAPSE_HEIGHT ? 0f : PREVIEW_MIN_HEIGHT;
+
+						previewHeaderClicked = false;
+						ev.Use();
+					}
+
+					break;
+				case EventType.MouseUp:
+					if( GUIUtility.hotControl == controlID )
+					{
+						GUIUtility.hotControl = 0;
+						if( previewHeaderClicked )
+						{
+							if( previewHeight >= PREVIEW_MIN_HEIGHT )
+							{
+								previewLastHeight = previewHeight;
+								previewHeight = 0f;
+							}
+							else
+								previewHeight = previewLastHeight;
+						}
+
+						EditorPrefs.SetFloat( PREVIEW_HEIGHT_PREF, previewHeight );
+						ev.Use();
+					}
+
+					break;
+				case EventType.Repaint:
+					if( GUIUtility.hotControl == controlID )
+					{
+						dragRect.y -= 1000f;
+						dragRect.height += 2000f;
+						dragRect.width = position.width;
+					}
+
+					EditorGUIUtility.AddCursorRect( dragRect, MouseCursor.SplitResizeUpDown );
+					break;
+			}
+
+			if( previewHeight >= PREVIEW_MIN_HEIGHT )
+			{
+				float maxHeight = position.height - 200f;
+				if( previewHeight > maxHeight )
+					previewHeight = maxHeight;
+
+				// +0.5 pixel compensates a 1-pixel space that sometimes shows up between the preview header and the preview itself
+				Rect previewPosition = GUILayoutUtility.GetRect( headerRect.width, previewHeight );
+				previewPosition.yMin -= 0.5f;
+
+				if( ev.type == EventType.Repaint )
+					previewBackgroundGuiStyle.Draw( previewPosition, false, false, false, false );
+
+				editor.DrawPreview( previewPosition );
+			}
 		}
 
 		private void DrawHorizontalLine()
@@ -1207,10 +1543,13 @@ namespace InspectPlusNamespace
 
 			VariableGetterHolder variableGetter = new VariableGetterHolder( name, new ConstantValueGetter( obj ).GetValue );
 
-			if( inspectorDrawerCount - 1 < debugModeDrawers.Count )
-				debugModeDrawers[inspectorDrawerCount - 1].Getter = variableGetter;
+			if( debugModeDrawerCount < debugModeDrawers.Count )
+				debugModeDrawers[debugModeDrawerCount++].Getter = variableGetter;
 			else
+			{
 				debugModeDrawers.Add( new DebugModeEntry( null ) { Getter = variableGetter } );
+				debugModeDrawerCount++;
+			}
 		}
 
 		private static void CopyValue( object obj )

@@ -34,11 +34,9 @@ namespace InspectPlusNamespace.Extras
 		public List<Object> FavoriteAssets = new List<Object>();
 
 		[Tooltip( "Height of the Favorites list" )]
-		public float FavoritesHeight = 48f;
+		public float FavoritesHeight = 42f;
 		[Tooltip( "Height of the History list" )]
-		public float HistoryHeight = 48f;
-		[Tooltip( "Height of the object preview area in the Inspector (only shown when an object support preview)" )]
-		public float PreviewHeight = 250f;
+		public float HistoryHeight = 42f;
 
 		[Tooltip( "Refresh and repaint interval of the Inspector in Normal mode" )]
 		public float NormalModeRefreshInterval = 0.5f;
@@ -49,8 +47,6 @@ namespace InspectPlusNamespace.Extras
 		public bool ShowFavoritesByDefault = true;
 		[Tooltip( "New windows should show History list by default (if History is not empty)" )]
 		public bool ShowHistoryByDefault = true;
-		[Tooltip( "New windows should show object preview area in the Inspector by default (only shown when an object support preview)" )]
-		public bool ShowPreviewByDefault = false;
 		[Tooltip( "While inspecting a folder, selecting files/folders inside the folder will update Unity's selection, as well" )]
 		public bool SyncProjectWindowSelection = true;
 		[Tooltip( "Selecting an object in Favorites or History will highlight the object in Hierarchy/Project" )]
