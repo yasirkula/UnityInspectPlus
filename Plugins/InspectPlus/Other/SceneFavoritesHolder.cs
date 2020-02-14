@@ -6,7 +6,7 @@ using UnityEditor.SceneManagement;
 #endif
 using UnityEngine;
 
-namespace InspectPlusNamespace.Extras
+namespace InspectPlusNamespace
 {
 	[ExecuteInEditMode]
 	public class SceneFavoritesHolder : MonoBehaviour

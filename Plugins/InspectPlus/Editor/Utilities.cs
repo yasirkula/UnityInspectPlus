@@ -5,7 +5,7 @@ using System.Text;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace InspectPlusNamespace.Extras
+namespace InspectPlusNamespace
 {
 	public static class Utilities
 	{

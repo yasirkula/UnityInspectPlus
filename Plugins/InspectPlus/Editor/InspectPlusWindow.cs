@@ -1,8 +1,5 @@
-﻿#if UNITY_2019_3_OR_NEWER
-#define APPLY_HORIZONTAL_PADDING // Inspector looks better with a padding in the new UI
-#endif
+﻿//#define APPLY_HORIZONTAL_PADDING
 
-using InspectPlusNamespace.Extras;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -98,6 +95,9 @@ namespace InspectPlusNamespace
 		private bool syncProjectWindowSelection;
 		private Editor projectWindowSelectionEditor;
 
+#if UNITY_2017_2_OR_NEWER
+		private bool changingPlayMode;
+#endif
 		private bool shouldRepositionSelf;
 		private bool shouldRepaint;
 		private bool snapFavoritesToActiveObject;
@@ -114,9 +114,9 @@ namespace InspectPlusNamespace
 		private float previewHeight;
 		private float previewLastHeight;
 		private bool previewHeaderClicked;
-		private GUIStyle previewHeaderGuiStyle;
-		private GUIStyle previewResizeAreaGuiStyle;
-		private GUIStyle previewBackgroundGuiStyle;
+		private static GUIStyle previewHeaderGuiStyle;
+		private static GUIStyle previewResizeAreaGuiStyle;
+		private static GUIStyle previewBackgroundGuiStyle;
 
 		private bool debugMode;
 		private double debugModeRefreshTime;
@@ -201,6 +201,10 @@ namespace InspectPlusNamespace
 
 			Undo.undoRedoPerformed -= OnUndoRedo;
 			Undo.undoRedoPerformed += OnUndoRedo;
+#if UNITY_2017_2_OR_NEWER
+			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+			EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+#endif
 
 			if( mainObject )
 			{
@@ -239,6 +243,9 @@ namespace InspectPlusNamespace
 			windows.Remove( this );
 
 			Undo.undoRedoPerformed -= OnUndoRedo;
+#if UNITY_2017_2_OR_NEWER
+			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+#endif
 
 			historyHolder.Clear();
 			favoritesHolder.Clear();
@@ -269,6 +276,40 @@ namespace InspectPlusNamespace
 		{
 			shouldRepaint = true;
 		}
+
+#if UNITY_2017_2_OR_NEWER
+		private void OnPlayModeStateChanged( PlayModeStateChange state )
+		{
+			if( state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.ExitingPlayMode )
+			{
+				changingPlayMode = true;
+
+				DestroyImmediate( projectWindowSelectionEditor );
+				projectWindowSelectionEditor = null;
+				inspectorAssetDrawer = null;
+			}
+			else
+			{
+				changingPlayMode = false;
+
+				for( int i = 0; i < inspectorDrawerCount; i++ )
+				{
+					Editor editor = inspectorDrawers[i];
+					if( editor && editor.target )
+					{
+						Object target = editor.target;
+						DestroyImmediate( editor );
+						editor = Editor.CreateEditor( target );
+
+						inspectorDrawers[i] = editor;
+					}
+				}
+
+				if( projectWindow.GetTreeView() != null )
+					ProjectWindowSelectionChanged( projectWindow.GetTreeView().GetSelection() );
+			}
+		}
+#endif
 
 		private void RefreshSettings()
 		{
@@ -905,6 +946,11 @@ namespace InspectPlusNamespace
 		#region GUI Functions
 		private void OnGUI()
 		{
+#if UNITY_2017_2_OR_NEWER
+			if( changingPlayMode )
+				return;
+#endif
+
 			Event ev = Event.current;
 			if( ev.type == EventType.ScrollWheel )
 			{
@@ -962,8 +1008,14 @@ namespace InspectPlusNamespace
 			{
 				GUILayout.Space( 0 ); // Somehow gets rid of the free space above the inspector header
 
+				float windowWidth = position.width;
+				bool originalWideMode = EditorGUIUtility.wideMode;
+				float originalLabelWidth = EditorGUIUtility.labelWidth;
+
 				if( inspectorAssetDrawer )
 				{
+					AdjustLabelWidth( windowWidth );
+
 					inspectorAssetDrawer.DrawHeader();
 					inspectorAssetDrawer.OnInspectorGUI();
 
@@ -974,18 +1026,24 @@ namespace InspectPlusNamespace
 						Rect importedObjectHeaderRect = GUILayoutUtility.GetRect( 0, 100000, 21f, 21f );
 						GUI.Box( importedObjectHeaderRect, "Imported Object" );
 
+#if !UNITY_2019_3_OR_NEWER
 						GUILayout.Space( -7 ); // Get rid of the space before the firstDrawer's header
+#endif
 					}
 				}
 
 				if( inspectorDrawerCount > 0 )
 				{
+					AdjustLabelWidth( windowWidth );
+
 					Editor firstDrawer = inspectorDrawers[0];
 					firstDrawer.DrawHeader();
 					firstDrawer.OnInspectorGUI();
 
 					for( int i = 1; i < inspectorDrawerCount; i++ )
 					{
+						AdjustLabelWidth( windowWidth );
+
 						Object targetObject = inspectorDrawers[i].target;
 						if( targetObject )
 						{
@@ -1015,6 +1073,9 @@ namespace InspectPlusNamespace
 						GUILayout.Space( 5 );
 					}
 				}
+
+				EditorGUIUtility.wideMode = originalWideMode;
+				EditorGUIUtility.labelWidth = originalLabelWidth;
 
 				if( showProjectWindow )
 				{
@@ -1279,7 +1340,13 @@ namespace InspectPlusNamespace
 				if( previewHeaderGuiStyle == null )
 					previewHeaderGuiStyle = EditorStyles.toolbar;
 				if( previewResizeAreaGuiStyle == null )
+				{
+#if UNITY_2019_3_OR_NEWER
+					previewResizeAreaGuiStyle = GUI.skin.horizontalScrollbarThumb;
+#else
 					previewResizeAreaGuiStyle = EditorStyles.helpBox;
+#endif
+				}
 				if( previewBackgroundGuiStyle == null )
 					previewBackgroundGuiStyle = EditorStyles.toolbar;
 			}
@@ -1295,6 +1362,9 @@ namespace InspectPlusNamespace
 			{
 				Rect dragIconRect = new Rect( dragRect.x + PREVIEW_HEADER_PADDING, dragRect.y + ( PREVIEW_HEADER_HEIGHT - previewResizeAreaGuiStyle.fixedHeight ) * 0.5f - 1f,
 					dragRect.width - 2f * PREVIEW_HEADER_PADDING, previewResizeAreaGuiStyle.fixedHeight );
+#if UNITY_2019_3_OR_NEWER
+				dragIconRect.y++;
+#endif
 
 				previewResizeAreaGuiStyle.Draw( dragIconRect, GUIContent.none, false, false, false, false );
 			}
@@ -1378,6 +1448,12 @@ namespace InspectPlusNamespace
 
 				editor.DrawPreview( previewPosition );
 			}
+		}
+
+		private void AdjustLabelWidth( float windowWidth )
+		{
+			EditorGUIUtility.wideMode = windowWidth > 330f;
+			EditorGUIUtility.labelWidth = windowWidth < 350f ? 130f : windowWidth * 0.4f;
 		}
 
 		private void DrawHorizontalLine()

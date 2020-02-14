@@ -3,7 +3,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-namespace InspectPlusNamespace.Extras
+namespace InspectPlusNamespace
 {
 	public class InspectPlusSettings : ScriptableObject
 	{

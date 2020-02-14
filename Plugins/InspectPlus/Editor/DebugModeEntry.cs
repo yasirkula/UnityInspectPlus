@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace InspectPlusNamespace.Extras
+namespace InspectPlusNamespace
 {
 	public class DebugModeEntry
 	{

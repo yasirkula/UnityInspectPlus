@@ -7,7 +7,7 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace InspectPlusNamespace.Extras
+namespace InspectPlusNamespace
 {
 	public delegate void ProjectWindowSelectionChangedDelegate( IList<int> newSelection );
 
@@ -148,7 +148,10 @@ namespace InspectPlusNamespace.Extras
 
 		protected override TreeViewItem BuildRoot()
 		{
-			return new TreeViewItem { id = GetInstanceIDFromPath( rootDirectory ), depth = -1 };
+			if( AssetDatabase.IsValidFolder( rootDirectory ) )
+				return new TreeViewItem { id = GetInstanceIDFromPath( rootDirectory ), depth = -1 };
+
+			return new TreeViewItem { id = -1, depth = -1 };
 		}
 
 		protected override IList<TreeViewItem> BuildRows( TreeViewItem root )
@@ -593,7 +596,7 @@ namespace InspectPlusNamespace.Extras
 				string filename = Path.GetFileName( paths[i] );
 				for( int j = 0; j < entries.Length; j++ )
 				{
-					if( filename == entries[i] )
+					if( filename == entries[j] )
 						return false;
 				}
 
