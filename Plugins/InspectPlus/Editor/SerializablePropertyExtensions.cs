@@ -8,7 +8,7 @@ namespace InspectPlusNamespace
 {
 	public static class SerializablePropertyExtensions
 	{
-		private class GenericObjectClipboard
+		public class GenericObjectClipboard
 		{
 			public readonly string type;
 			public readonly object[] values;
@@ -20,7 +20,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private class ArrayClipboard
+		public class ArrayClipboard
 		{
 			public readonly int size;
 			public readonly string elementType;
@@ -34,7 +34,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private class VectorClipboard
+		public class VectorClipboard
 		{
 			public readonly float c1, c2, c3, c4, c5, c6;
 

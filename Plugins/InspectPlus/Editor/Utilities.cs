@@ -9,14 +9,6 @@ namespace InspectPlusNamespace
 {
 	public static class Utilities
 	{
-		public class UnityObjectComparer : IComparer<Object>
-		{
-			public int Compare( Object x, Object y )
-			{
-				return x.name.CompareTo( y.name );
-			}
-		}
-
 		private const BindingFlags VARIABLE_BINDING_FLAGS = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
 		private static readonly HashSet<Type> primitiveUnityTypes = new HashSet<Type>()
@@ -24,7 +16,7 @@ namespace InspectPlusNamespace
 			typeof( string ), typeof( Vector4 ), typeof( Vector3 ), typeof( Vector2 ), typeof( Rect ),
 			typeof( Quaternion ), typeof( Color ), typeof( Color32 ), typeof( Bounds ), typeof( Matrix4x4 ),
 #if UNITY_2017_2_OR_NEWER
-			 typeof( Vector3Int ), typeof( Vector2Int ), typeof( RectInt ), typeof( BoundsInt )
+			typeof( Vector3Int ), typeof( Vector2Int ), typeof( RectInt ), typeof( BoundsInt )
 #endif
 		};
 
@@ -38,7 +30,6 @@ namespace InspectPlusNamespace
 		private static readonly Dictionary<Type, VariableGetterHolder[]> typeToVariables = new Dictionary<Type, VariableGetterHolder[]>( 1024 );
 		private static readonly string reflectionNameSpace = typeof( Assembly ).Namespace;
 		public static readonly StringBuilder stringBuilder = new StringBuilder( 256 );
-		public static readonly UnityObjectComparer unityObjectComparer = new UnityObjectComparer();
 
 		// Get filtered variables for a type
 		public static VariableGetterHolder[] GetFilteredVariablesForType( Type type )

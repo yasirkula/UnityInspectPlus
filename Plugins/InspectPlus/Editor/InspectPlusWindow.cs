@@ -25,6 +25,9 @@ namespace InspectPlusNamespace
 
 		private const string NEW_TAB_LABEL = "Open In New Tab";
 		private const string NEW_WINDOW_LABEL = "Open In New Window";
+		private const string CONTEXT_COPY_LABEL = "Copy (Inspect+)";
+		private const string CONTEXT_PASTE_LABEL = "Paste (Inspect+)";
+
 		private const float BUTTON_DRAG_THRESHOLD_SQR = 600f;
 		private const float HORIZONTAL_SCROLL_SPEED = 10f;
 		private const float SCROLLABLE_LIST_ICON_WIDTH = 34f;
@@ -62,10 +65,9 @@ namespace InspectPlusNamespace
 		private static readonly DummyLogHandler dummyLogHandler = new DummyLogHandler();
 		private static readonly Color activeButtonColor = new Color32( 245, 170, 10, 255 );
 
-		private static object clipboard;
-
 		private static InspectPlusWindow mainWindow;
 		private static GUIContent favoritesIcon, historyIcon;
+		private static GUIContent favoritesIconNoTooltip, historyIconNoTooltip;
 		private static Rect lastWindowPosition;
 
 		// These are not readonly to support serialization of the data
@@ -107,6 +109,8 @@ namespace InspectPlusNamespace
 		private Vector2 buttonPressPosition;
 		private double nextUpdateTime;
 		private double nextAnimationRepaintTime;
+		private bool objectBrowserWindowVisible;
+		private double objectBrowserWindowCloseTime;
 
 		private bool showFavorites, showHistory;
 		private Vector2 favoritesScrollPosition, historyScrollPosition, inspectorScrollPosition;
@@ -128,15 +132,22 @@ namespace InspectPlusNamespace
 
 		private GUILayoutOption favoritesHeight;
 		private GUILayoutOption historyHeight;
+		private GUILayoutOption compactListHeight;
 		private GUILayoutOption previewHeaderHeight;
 		private GUILayoutOption scrollableListIconSize;
 
 		#region Initializers
-		//[MenuItem( "Window/Inspector+" )]
-		//private static void Init()
-		//{
-		//	GetDefaultWindow();
-		//}
+		[MenuItem( "Window/Inspect+/New Window" )]
+		private static void ShowNewWindow()
+		{
+			GetNewWindow();
+		}
+
+		[MenuItem( "Window/Inspect+/Paste Bin" )]
+		private static void ShowPasteBinWindow()
+		{
+			PasteBinWindow.Show();
+		}
 
 		[InitializeOnLoadMethod]
 		private static void Initialize()
@@ -163,8 +174,10 @@ namespace InspectPlusNamespace
 			assetImporterEditorField = assetImporterEditorType.GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
 #endif
 
-			favoritesIcon = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture, "Favorites" );
-			historyIcon = new GUIContent( EditorGUIUtility.Load( "Search Icon" ) as Texture, "History" );
+			favoritesIconNoTooltip = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture );
+			historyIconNoTooltip = new GUIContent( EditorGUIUtility.Load( "Search Icon" ) as Texture );
+			favoritesIcon = new GUIContent( favoritesIconNoTooltip.image, "Favorites" );
+			historyIcon = new GUIContent( historyIconNoTooltip.image, "History" );
 
 			scrollableListIconGuiStyle.margin = new RectOffset( 2, 2, 2, 2 );
 			scrollableListIconGuiStyle.alignment = TextAnchor.MiddleCenter;
@@ -315,6 +328,7 @@ namespace InspectPlusNamespace
 		{
 			favoritesHeight = GUILayout.Height( InspectPlusSettings.Instance.FavoritesHeight );
 			historyHeight = GUILayout.Height( InspectPlusSettings.Instance.HistoryHeight );
+			compactListHeight = GUILayout.Height( InspectPlusSettings.Instance.CompactListHeight );
 			previewHeaderHeight = GUILayout.Height( PREVIEW_HEADER_HEIGHT );
 			scrollableListIconSize = GUILayout.Width( Mathf.Min( SCROLLABLE_LIST_ICON_WIDTH, InspectPlusSettings.Instance.FavoritesHeight, InspectPlusSettings.Instance.HistoryHeight ) );
 
@@ -365,15 +379,100 @@ namespace InspectPlusNamespace
 		}
 
 		[MenuItem( "CONTEXT/Component/" + NEW_TAB_LABEL, priority = 1500 )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_TAB_LABEL, priority = 1500 )]
+		[MenuItem( "CONTEXT/AssetImporter/" + NEW_TAB_LABEL, priority = 1500 )]
+		[MenuItem( "CONTEXT/Material/" + NEW_TAB_LABEL, priority = 1500 )]
 		private static void ContextMenuItemNewTab( MenuCommand command )
 		{
 			Inspect( command.context, false );
 		}
 
 		[MenuItem( "CONTEXT/Component/" + NEW_WINDOW_LABEL, priority = 1500 )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_WINDOW_LABEL, priority = 1500 )]
+		[MenuItem( "CONTEXT/AssetImporter/" + NEW_WINDOW_LABEL, priority = 1500 )]
+		[MenuItem( "CONTEXT/Material/" + NEW_WINDOW_LABEL, priority = 1500 )]
 		private static void ContextMenuItemNewWindow( MenuCommand command )
 		{
 			Inspect( command.context, true );
+		}
+
+		[MenuItem( "GameObject/Inspect+/Copy Value", priority = 49 )]
+		[MenuItem( "Assets/Inspect+/Copy Value", priority = 1500 )]
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_COPY_LABEL, priority = 1450 )]
+		private static void ContextMenuItemCopyObject( MenuCommand command )
+		{
+			if( command.context )
+				PasteBinWindow.AddToClipboard( command.context, "CONTEXT" );
+			else
+				PasteBinWindow.AddToClipboard( Selection.activeObject, "CONTEXT" );
+		}
+
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
+		private static void ContextMenuItemPasteObject( MenuCommand command )
+		{
+			Object source = PasteBinWindow.ActiveClipboard as Object;
+			Object target = command.context;
+			if( !source || source == target )
+				return;
+
+			if( source.GetType() == target.GetType() )
+			{
+				Undo.RecordObject( target, "Paste Values" );
+				EditorUtility.CopySerialized( source, target );
+			}
+			else
+			{
+				// Perform a name-wise paste
+				Dictionary<string, SerializedProperty> sourceProperties = new Dictionary<string, SerializedProperty>( 32 );
+				SerializedProperty property = new SerializedObject( source ).GetIterator();
+				if( property.NextVisible( true ) )
+				{
+					do
+					{
+						sourceProperties[property.name] = property.Copy();
+					} while( property.NextVisible( false ) );
+				}
+
+				property = new SerializedObject( target ).GetIterator();
+				if( property.NextVisible( true ) )
+				{
+					System.Text.StringBuilder sb = Utilities.stringBuilder;
+					sb.Length = 0;
+					sb.AppendLine( "Pasted variable(s):" );
+
+					int pastes = 0;
+					do
+					{
+						SerializedProperty matchingProperty;
+						if( sourceProperties.TryGetValue( property.name, out matchingProperty ) )
+						{
+							object clipboard = matchingProperty.CopyValue();
+							if( property.CanPasteValue( clipboard ) )
+							{
+								property.PasteValue( clipboard );
+
+								sb.Append( "- " ).AppendLine( property.name );
+								pastes++;
+							}
+						}
+					} while( property.NextVisible( false ) );
+
+					if( pastes > 0 )
+					{
+						property.serializedObject.ApplyModifiedProperties();
+						Debug.Log( sb.ToString() );
+					}
+				}
+			}
+		}
+
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_LABEL, validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_LABEL, validate = true )]
+		private static bool ContextMenuItemPasteObjectValidate( MenuCommand command )
+		{
+			return ( PasteBinWindow.ActiveClipboard as Object ) && !ReferenceEquals( PasteBinWindow.ActiveClipboard, command.context );
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, validate = true )]
@@ -452,7 +551,7 @@ namespace InspectPlusNamespace
 			else
 				menu.AddDisabledItem( new GUIContent( "Copy Value" ) );
 
-			if( !property.CanPasteValue( clipboard ) )
+			if( !property.CanPasteValue( PasteBinWindow.ActiveClipboard ) )
 				menu.AddDisabledItem( new GUIContent( "Paste Value" ) );
 			else
 				menu.AddItem( new GUIContent( "Paste Value" ), false, PasteValue, property.Copy() );
@@ -465,9 +564,12 @@ namespace InspectPlusNamespace
 
 		void IHasCustomMenu.AddItemsToMenu( GenericMenu menu )
 		{
-			menu.AddItem( new GUIContent( "Show Favorites" ), showFavorites, () => showFavorites = !showFavorites );
-			menu.AddItem( new GUIContent( "Show History" ), showHistory, () => showHistory = !showHistory );
-			menu.AddSeparator( "" );
+			if( !InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
+			{
+				menu.AddItem( new GUIContent( "Show Favorites" ), showFavorites, () => showFavorites = !showFavorites );
+				menu.AddItem( new GUIContent( "Show History" ), showHistory, () => showHistory = !showHistory );
+				menu.AddSeparator( "" );
+			}
 
 			menu.AddItem( new GUIContent( "Debug Mode" ), debugMode, () => debugMode = !debugMode );
 			menu.AddSeparator( "" );
@@ -523,6 +625,8 @@ namespace InspectPlusNamespace
 
 			menu.AddSeparator( "" );
 
+			menu.AddItem( new GUIContent( "Paste Bin" ), false, ShowPasteBinWindow );
+
 			menu.AddItem( new GUIContent( "Settings" ), false, () => Selection.activeObject = InspectPlusSettings.Instance );
 
 			menu.AddSeparator( "" );
@@ -540,52 +644,6 @@ namespace InspectPlusNamespace
 					if( windows[i] != this )
 						windows[i].Close();
 				}
-			} );
-		}
-
-		private void OnScrollViewIconRightClicked( GenericMenu menu, List<List<Object>> lists )
-		{
-			List<Object> allObjects = new List<Object>( 8 );
-			for( int i = 0; i < lists.Count; i++ )
-			{
-				List<Object> list = lists[i];
-				for( int j = 0; j < list.Count; j++ )
-				{
-					if( !list[j] )
-						continue;
-
-					// Insert object into sorted list
-					// Credit: https://stackoverflow.com/a/12172412/2373034
-					int index = allObjects.BinarySearch( list[j], Utilities.unityObjectComparer );
-					if( index < 0 )
-						index = ~index;
-
-					allObjects.Insert( index, list[j] );
-				}
-			}
-
-			for( int i = 0; i < allObjects.Count; i++ )
-			{
-				Object obj = allObjects[i];
-				menu.AddItem( new GUIContent( string.Concat( obj.name, " (", obj.GetType().Name, ")" ) ), false, () =>
-				{
-					pendingInspectTarget = obj;
-
-					if( lists == favoritesHolder )
-						snapFavoritesToActiveObject = true;
-					else
-						snapHistoryToActiveObject = true;
-				} );
-			}
-
-			menu.AddSeparator( "" );
-
-			menu.AddItem( new GUIContent( "Hide" ), false, () =>
-			{
-				if( lists == favoritesHolder )
-					showFavorites = false;
-				else
-					showHistory = false;
 			} );
 		}
 
@@ -688,6 +746,13 @@ namespace InspectPlusNamespace
 		{
 			if( !obj )
 				return;
+
+			if( obj is AssetImporter )
+			{
+				obj = AssetDatabase.LoadMainAssetAtPath( ( (AssetImporter) obj ).assetPath );
+				if( !obj )
+					return;
+			}
 
 			if( newWindow )
 				GetNewWindow().InspectInternal( obj, true );
@@ -952,33 +1017,43 @@ namespace InspectPlusNamespace
 #endif
 
 			Event ev = Event.current;
-			if( ev.type == EventType.ScrollWheel )
+			if( InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
 			{
-				pendingScrollAmount = ev.delta.y * HORIZONTAL_SCROLL_SPEED;
-				shouldRepaint = true;
+				GUILayout.BeginHorizontal();
+				DrawScrollableList( true );
+				DrawScrollableList( false );
+				GUILayout.EndHorizontal();
 			}
-
-			if( showFavorites )
+			else
 			{
-				bool favoritesEmpty = true;
-				for( int i = 0; i < favoritesHolder.Count; i++ )
+				if( ev.type == EventType.ScrollWheel )
 				{
-					if( favoritesHolder[i].Count > 0 )
-					{
-						favoritesEmpty = false;
-						break;
-					}
+					pendingScrollAmount = ev.delta.y * HORIZONTAL_SCROLL_SPEED;
+					shouldRepaint = true;
 				}
 
-				if( !favoritesEmpty )
-					favoritesScrollPosition = DrawScrollableList( true );
+				if( showFavorites )
+				{
+					bool favoritesEmpty = true;
+					for( int i = 0; i < favoritesHolder.Count; i++ )
+					{
+						if( favoritesHolder[i].Count > 0 )
+						{
+							favoritesEmpty = false;
+							break;
+						}
+					}
+
+					if( !favoritesEmpty )
+						favoritesScrollPosition = DrawScrollableList( true );
+				}
+
+				if( showHistory && history.Count > 0 )
+					historyScrollPosition = DrawScrollableList( false );
+
+				if( ev.type == EventType.Repaint )
+					pendingScrollAmount = 0f;
 			}
-
-			if( showHistory && history.Count > 0 )
-				historyScrollPosition = DrawScrollableList( false );
-
-			if( ev.type == EventType.Repaint )
-				pendingScrollAmount = 0f;
 
 			if( !mainObject )
 				return;
@@ -1132,92 +1207,100 @@ namespace InspectPlusNamespace
 		{
 			Vector2 scrollPosition = drawingFavorites ? favoritesScrollPosition : historyScrollPosition;
 			List<List<Object>> lists = drawingFavorites ? favoritesHolder : historyHolder;
-			GUIContent icon = drawingFavorites ? favoritesIcon : historyIcon;
-			GUILayoutOption height = drawingFavorites ? favoritesHeight : historyHeight;
+			GUIContent icon = drawingFavorites ? ( !objectBrowserWindowVisible ? favoritesIcon : favoritesIconNoTooltip ) : ( !objectBrowserWindowVisible ? historyIcon : historyIconNoTooltip );
 
-			Color backgroundColor = GUI.backgroundColor;
-			GUIStyle buttonStyle = GUI.skin.button;
 			Event ev = Event.current;
 
-			GUILayout.BeginHorizontal();
-			GUILayout.Label( icon, scrollableListIconGuiStyle, scrollableListIconSize, height );
-			if( ev.type == EventType.ContextClick && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+			Rect scrollableListRect;
+			if( InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
 			{
-				GenericMenu menu = new GenericMenu();
-				OnScrollViewIconRightClicked( menu, lists );
-				menu.ShowAsContext();
+				GUILayout.Label( icon, GUI.skin.button, compactListHeight );
+				if( ev.type == EventType.MouseDown && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+					ShowScrollableListContentsAsPopup( lists );
+
+				scrollableListRect = GUILayoutUtility.GetLastRect();
 			}
-
-			scrollPosition = GUILayout.BeginScrollView( scrollPosition, height );
-			GUILayout.BeginHorizontal();
-
-			float? snapTargetPos = null;
-
-			for( int i = 0; i < lists.Count; i++ )
+			else
 			{
-				List<Object> list = lists[i];
-				for( int j = 0; j < list.Count; j++ )
+				GUILayoutOption height = drawingFavorites ? favoritesHeight : historyHeight;
+				Color backgroundColor = GUI.backgroundColor;
+				GUIStyle buttonStyle = GUI.skin.button;
+
+				GUILayout.BeginHorizontal();
+				GUILayout.Label( icon, scrollableListIconGuiStyle, scrollableListIconSize, height );
+				if( ev.type == EventType.MouseDown && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+					ShowScrollableListContentsAsPopup( lists );
+
+				scrollPosition = GUILayout.BeginScrollView( scrollPosition, height );
+				GUILayout.BeginHorizontal();
+
+				float? snapTargetPos = null;
+
+				for( int i = 0, buttonIndex = 0; i < lists.Count; i++ )
 				{
-					if( list[j] == mainObject )
-						GUI.backgroundColor = activeButtonColor;
-
-					if( ReferenceEquals( list[j], null ) )
+					List<Object> list = lists[i];
+					for( int j = 0; j < list.Count; j++, buttonIndex++ )
 					{
-						RemoveObjectFromList( list, j );
-						GUIUtility.ExitGUI();
-					}
-
-					GUIContent buttonContent = EditorGUIUtility.ObjectContent( list[j], list[j].GetType() );
-					textSizeCalculator.text = buttonContent.text;
-					switch( DraggableButton( buttonContent, buttonStyle, list[j], zeroButtonHeight, expandHeight, GUILayout.Width( buttonStyle.CalcSize( textSizeCalculator ).x + 20f ) ) )
-					{
-						case ButtonState.LeftClicked:
-							pendingInspectTarget = list[j];
-							break;
-						case ButtonState.MiddleClicked:
+						if( ReferenceEquals( list[j], null ) )
+						{
 							RemoveObjectFromList( list, j );
 							GUIUtility.ExitGUI();
-							break;
-						case ButtonState.RightClicked:
-							GenericMenu menu = new GenericMenu();
-							int index = j;
-							OnScrollViewButtonRightClicked( menu, list, index );
-							menu.ShowAsContext();
+						}
 
-							break;
+						if( list[j] == mainObject )
+							GUI.backgroundColor = activeButtonColor;
+
+						GUIContent buttonContent = EditorGUIUtility.ObjectContent( list[j], list[j].GetType() );
+						textSizeCalculator.text = buttonContent.text;
+						switch( DraggableButton( buttonContent, buttonStyle, list[j], zeroButtonHeight, expandHeight, GUILayout.Width( buttonStyle.CalcSize( textSizeCalculator ).x + 20f ) ) )
+						{
+							case ButtonState.LeftClicked:
+								pendingInspectTarget = list[j];
+								break;
+							case ButtonState.MiddleClicked:
+								RemoveObjectFromList( list, j );
+								GUIUtility.ExitGUI();
+								break;
+							case ButtonState.RightClicked:
+								GenericMenu menu = new GenericMenu();
+								int index = j;
+								OnScrollViewButtonRightClicked( menu, list, index );
+								menu.ShowAsContext();
+
+								break;
+						}
+
+						if( ev.type == EventType.Repaint && list[j] == mainObject )
+						{
+							if( ( snapHistoryToActiveObject && !drawingFavorites ) || ( snapFavoritesToActiveObject && drawingFavorites ) )
+								snapTargetPos = buttonIndex > 0 ? GUILayoutUtility.GetLastRect().x : 0f;
+						}
+
+						GUI.backgroundColor = backgroundColor;
 					}
-
-					if( ev.type == EventType.Repaint && list[j] == mainObject )
-					{
-						if( ( snapHistoryToActiveObject && !drawingFavorites ) || ( snapFavoritesToActiveObject && drawingFavorites ) )
-							snapTargetPos = j > 0 ? GUILayoutUtility.GetLastRect().x : 0f;
-					}
-
-					GUI.backgroundColor = backgroundColor;
 				}
-			}
 
-			GUILayout.EndHorizontal();
-			GUILayout.EndScrollView();
-			GUILayout.EndHorizontal();
+				GUILayout.EndHorizontal();
+				GUILayout.EndScrollView();
+				GUILayout.EndHorizontal();
 
-			if( snapTargetPos.HasValue )
-			{
-				if( drawingFavorites )
-					snapFavoritesToActiveObject = false;
-				else
-					snapHistoryToActiveObject = false;
+				if( snapTargetPos.HasValue )
+				{
+					if( drawingFavorites )
+						snapFavoritesToActiveObject = false;
+					else
+						snapHistoryToActiveObject = false;
 
-				shouldRepaint = true;
+					shouldRepaint = true;
 
-				scrollPosition.x = snapTargetPos.Value;
-				if( scrollPosition.x < 0f )
-					scrollPosition.x = 0f;
-			}
+					scrollPosition.x = snapTargetPos.Value;
+					if( scrollPosition.x < 0f )
+						scrollPosition.x = 0f;
+				}
 
-			if( ( ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated || ( pendingScrollAmount != 0f && ev.type == EventType.Repaint ) ) && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
-			{
-				if( pendingScrollAmount != 0f )
+				scrollableListRect = GUILayoutUtility.GetLastRect();
+
+				if( pendingScrollAmount != 0f && ev.type == EventType.Repaint && scrollableListRect.Contains( ev.mousePosition ) )
 				{
 					scrollPosition.x += pendingScrollAmount;
 					if( scrollPosition.x < 0f )
@@ -1225,45 +1308,47 @@ namespace InspectPlusNamespace
 
 					shouldRepaint = true;
 				}
-				else
-				{
-					// Accept drag&drop
-					DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
-					if( ev.type == EventType.DragPerform )
-					{
-						DragAndDrop.AcceptDrag();
 
-						Object[] draggedObjects = DragAndDrop.objectReferences;
-						if( draggedObjects.Length > 0 )
-						{
-							Object objectToInspect = null;
-							for( int i = 0; i < draggedObjects.Length; i++ )
-							{
-								if( draggedObjects[i] )
-								{
-									if( drawingFavorites )
-										TryAddObjectToFavorites( draggedObjects[i] );
-									else
-									{
-										TryAddObjectToHistory( draggedObjects[i] );
-										objectToInspect = draggedObjects[i];
-									}
-								}
-							}
-
-							if( objectToInspect != null )
-								InspectInternal( objectToInspect, true );
-						}
-					}
-
-					ev.Use();
-				}
+				// Draw black separator line
+				Rect separatorRect = scrollableListRect;
+				separatorRect.y = scrollableListRect.yMax;
+				separatorRect.height = 1f;
+				EditorGUI.DrawRect( separatorRect, Color.black );
 			}
 
-			Rect separatorLineRect = GUILayoutUtility.GetLastRect();
-			separatorLineRect.y = separatorLineRect.yMax;
-			separatorLineRect.height = 1f;
-			EditorGUI.DrawRect( separatorLineRect, Color.black );
+			if( ( ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated ) && scrollableListRect.Contains( ev.mousePosition ) )
+			{
+				// Accept drag&drop
+				DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+				if( ev.type == EventType.DragPerform )
+				{
+					DragAndDrop.AcceptDrag();
+
+					Object[] draggedObjects = DragAndDrop.objectReferences;
+					if( draggedObjects.Length > 0 )
+					{
+						Object objectToInspect = null;
+						for( int i = 0; i < draggedObjects.Length; i++ )
+						{
+							if( draggedObjects[i] )
+							{
+								if( drawingFavorites )
+									TryAddObjectToFavorites( draggedObjects[i] );
+								else
+								{
+									TryAddObjectToHistory( draggedObjects[i] );
+									objectToInspect = draggedObjects[i];
+								}
+							}
+						}
+
+						if( objectToInspect != null )
+							InspectInternal( objectToInspect, true );
+					}
+				}
+
+				ev.Use();
+			}
 
 			return scrollPosition;
 		}
@@ -1321,6 +1406,88 @@ namespace InspectPlusNamespace
 				ev.Use();
 
 			return result;
+		}
+
+		private void ShowScrollableListContentsAsPopup( List<List<Object>> lists )
+		{
+			// Clicking the icon while the popup is visible will close the popup and then
+			// immediately reopen it for some reason, avoid it
+			if( EditorApplication.timeSinceStartup - objectBrowserWindowCloseTime <= 0.05 )
+				return;
+
+			List<Object> allObjects = new List<Object>( 8 );
+			for( int i = 0; i < lists.Count; i++ )
+			{
+				List<Object> list = lists[i];
+				for( int j = 0; j < list.Count; j++ )
+				{
+					if( list[j] && !allObjects.Contains( list[j] ) )
+						allObjects.Add( list[j] );
+				}
+			}
+
+			if( allObjects.Count == 0 )
+				return;
+
+			HashSet<Object> favoriteObjects = new HashSet<Object>();
+			for( int i = 0; i < favoritesHolder.Count; i++ )
+				favoriteObjects.UnionWith( favoritesHolder[i] );
+
+			ObjectBrowserWindow window = CreateInstance<ObjectBrowserWindow>();
+			ObjectBrowserWindow.SortType sortType = lists == favoritesHolder ? InspectPlusSettings.Instance.FavoritesSortType : InspectPlusSettings.Instance.HistorySortType;
+			window.Initialize( allObjects, favoriteObjects, mainObject, sortType, ( Object obj ) =>
+			{
+				pendingInspectTarget = obj;
+
+				if( lists == favoritesHolder )
+					snapFavoritesToActiveObject = true;
+				else
+					snapHistoryToActiveObject = true;
+
+				return true;
+			}, ( Object obj, bool isFavorite ) =>
+			{
+				if( isFavorite )
+					TryAddObjectToFavorites( obj );
+				else
+				{
+					for( int i = 0; i < favoritesHolder.Count; i++ )
+					{
+						int index = favoritesHolder[i].IndexOf( obj );
+						if( index >= 0 )
+						{
+							RemoveObjectFromList( favoritesHolder[i], index );
+							break;
+						}
+					}
+				}
+			},
+			( ObjectBrowserWindow.SortType sortType2 ) =>
+			{
+				objectBrowserWindowVisible = false;
+				objectBrowserWindowCloseTime = EditorApplication.timeSinceStartup;
+
+				if( lists == favoritesHolder && sortType2 != InspectPlusSettings.Instance.FavoritesSortType )
+				{
+					InspectPlusSettings.Instance.FavoritesSortType = sortType2;
+					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+				}
+				else if( lists == historyHolder && sortType2 != InspectPlusSettings.Instance.HistorySortType )
+				{
+					InspectPlusSettings.Instance.HistorySortType = sortType2;
+					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+				}
+			} );
+
+			Rect windowPosition = position;
+			Rect scrollableListIconRect = GUILayoutUtility.GetLastRect();
+			scrollableListIconRect.position = new Vector2( windowPosition.x, scrollableListIconRect.y + windowPosition.y );
+
+			if( !InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
+				scrollableListIconRect.height -= 2f;
+
+			window.ShowAsDropDown( scrollableListIconRect, new Vector2( windowPosition.width, Mathf.Min( Screen.currentResolution.height * 0.5f, allObjects.Count * ( EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing ) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing + 5f ) ) );
+			objectBrowserWindowVisible = true;
 		}
 
 		// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/Inspector/InspectorWindow.cs
@@ -1630,12 +1797,15 @@ namespace InspectPlusNamespace
 
 		private static void CopyValue( object obj )
 		{
-			clipboard = ( (SerializedProperty) obj ).CopyValue();
+			SerializedProperty prop = (SerializedProperty) obj;
+			object clipboard = prop.CopyValue();
+			if( clipboard != null )
+				PasteBinWindow.AddToClipboard( clipboard, prop.serializedObject.targetObject.name + "." + prop.name );
 		}
 
 		private static void PasteValue( object obj )
 		{
-			( (SerializedProperty) obj ).PasteValue( clipboard );
+			( (SerializedProperty) obj ).PasteValue( PasteBinWindow.ActiveClipboard );
 		}
 
 		private static Object PreferablyGameObject( Object obj )

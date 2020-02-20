@@ -33,10 +33,20 @@ namespace InspectPlusNamespace
 
 		public List<Object> FavoriteAssets = new List<Object>();
 
+		[Tooltip( "Determines whether Favorites and History lists should be drawn horizontally or vertically" )]
+		public bool CompactFavoritesAndHistoryLists = false;
+
 		[Tooltip( "Height of the Favorites list" )]
 		public float FavoritesHeight = 42f;
 		[Tooltip( "Height of the History list" )]
 		public float HistoryHeight = 42f;
+		[Tooltip( "Height of the compact Favorites and History lists" )]
+		public float CompactListHeight = 28f;
+
+		[HideInInspector]
+		public ObjectBrowserWindow.SortType FavoritesSortType = ObjectBrowserWindow.SortType.Name;
+		[HideInInspector]
+		public ObjectBrowserWindow.SortType HistorySortType = ObjectBrowserWindow.SortType.None;
 
 		[Tooltip( "Refresh and repaint interval of the Inspector in Normal mode" )]
 		public float NormalModeRefreshInterval = 0.5f;
