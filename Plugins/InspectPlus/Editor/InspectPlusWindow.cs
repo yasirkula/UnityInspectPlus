@@ -400,6 +400,7 @@ namespace InspectPlusNamespace
 		[MenuItem( "Assets/Inspect+/Copy Value", priority = 1500 )]
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_COPY_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		private static void ContextMenuItemCopyObject( MenuCommand command )
 		{
 			if( command.context )
@@ -431,7 +432,8 @@ namespace InspectPlusNamespace
 				{
 					do
 					{
-						sourceProperties[property.name] = property.Copy();
+						if( property.name != "m_Script" )
+							sourceProperties[property.name] = property.Copy();
 					} while( property.NextVisible( false ) );
 				}
 
@@ -1479,14 +1481,16 @@ namespace InspectPlusNamespace
 				}
 			} );
 
-			Rect windowPosition = position;
+			float windowWidth = position.width;
 			Rect scrollableListIconRect = GUILayoutUtility.GetLastRect();
-			scrollableListIconRect.position = new Vector2( windowPosition.x, scrollableListIconRect.y + windowPosition.y );
+			scrollableListIconRect.x = 0f;
+			scrollableListIconRect.width = windowWidth;
+			scrollableListIconRect.position = GUIUtility.GUIToScreenPoint( scrollableListIconRect.position );
 
 			if( !InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
 				scrollableListIconRect.height -= 2f;
 
-			window.ShowAsDropDown( scrollableListIconRect, new Vector2( windowPosition.width, Mathf.Min( Screen.currentResolution.height * 0.5f, allObjects.Count * ( EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing ) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing + 5f ) ) );
+			window.ShowAsDropDown( scrollableListIconRect, new Vector2( windowWidth, Mathf.Min( Screen.currentResolution.height * 0.5f, allObjects.Count * ( EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing ) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing + 5f ) ) );
 			objectBrowserWindowVisible = true;
 		}
 
@@ -1800,7 +1804,7 @@ namespace InspectPlusNamespace
 			SerializedProperty prop = (SerializedProperty) obj;
 			object clipboard = prop.CopyValue();
 			if( clipboard != null )
-				PasteBinWindow.AddToClipboard( clipboard, prop.serializedObject.targetObject.name + "." + prop.name );
+				PasteBinWindow.AddToClipboard( clipboard, string.Concat( prop.serializedObject.targetObject.name, ".", prop.serializedObject.targetObject.GetType().Name, ".", prop.name ) );
 		}
 
 		private static void PasteValue( object obj )

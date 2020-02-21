@@ -13,10 +13,10 @@ namespace InspectPlusNamespace
 		private const int CLIPBOARD_CAPACITY = 30;
 
 		private static readonly Color activeClipboardColor = new Color32( 245, 170, 10, 255 );
-		private static readonly GUILayoutOption expandWidth = GUILayout.ExpandWidth( true );
+		private static GUIStyle activeClipboardBackgroundStyle;
 
 		private static readonly List<object> clipboard = new List<object>( 4 );
-		private static readonly List<string> clipboardLabels = new List<string>( 4 );
+		private static readonly List<GUIContent> clipboardLabels = new List<GUIContent>( 4 );
 
 		private static PasteBinWindow mainWindow;
 
@@ -37,7 +37,7 @@ namespace InspectPlusNamespace
 		private void OnEnable()
 		{
 			mainWindow = this;
-			gradientField = typeof( EditorGUILayout ).GetMethod( "GradientField", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new System.Type[] { typeof( string ), typeof( Gradient ), typeof( GUILayoutOption[] ) }, null );
+			gradientField = typeof( EditorGUILayout ).GetMethod( "GradientField", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new System.Type[] { typeof( GUIContent ), typeof( Gradient ), typeof( GUILayoutOption[] ) }, null );
 
 			Repaint();
 		}
@@ -52,7 +52,7 @@ namespace InspectPlusNamespace
 			menu.AddItem( new GUIContent( "Clear" ), false, ClearClipboard );
 		}
 
-		public static void AddToClipboard( object obj, string name )
+		public static void AddToClipboard( object obj, string label )
 		{
 			if( obj == null || obj.Equals( null ) )
 				return;
@@ -64,7 +64,7 @@ namespace InspectPlusNamespace
 			}
 
 			clipboard.Add( obj );
-			clipboardLabels.Add( name );
+			clipboardLabels.Add( new GUIContent( label, label ) );
 
 			activeClipboardIndex = clipboard.Count - 1;
 
@@ -74,6 +74,19 @@ namespace InspectPlusNamespace
 
 		private void OnGUI()
 		{
+			if( activeClipboardBackgroundStyle == null )
+			{
+				Texture2D background = new Texture2D( 1, 1 );
+				background.SetPixel( 0, 0, activeClipboardColor );
+				background.Apply( false, true );
+
+				activeClipboardBackgroundStyle = new GUIStyle();
+				activeClipboardBackgroundStyle.normal.background = background;
+				activeClipboardBackgroundStyle.onNormal.background = background;
+			}
+
+			Event ev = Event.current;
+
 			bool originalWideMode = EditorGUIUtility.wideMode;
 			float originalLabelWidth = EditorGUIUtility.labelWidth;
 
@@ -87,14 +100,14 @@ namespace InspectPlusNamespace
 
 			for( int i = 0; i < clipboard.Count; i++ )
 			{
-				if( activeClipboardIndex == i )
+				if( clipboard[i] == null || clipboard[i].Equals( null ) )
 				{
-					Rect backgroundRect = EditorGUILayout.GetControlRect( false, 0f, expandWidth );
-					backgroundRect.y += EditorGUIUtility.standardVerticalSpacing;
-					backgroundRect.height = EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
-
-					EditorGUI.DrawRect( backgroundRect, activeClipboardColor );
+					RemoveClipboard( i-- );
+					continue;
 				}
+
+				if( activeClipboardIndex == i )
+					GUILayout.BeginHorizontal( activeClipboardBackgroundStyle );
 
 				if( clipboard[i] is Object )
 					clipboard[i] = EditorGUILayout.ObjectField( clipboardLabels[i], clipboard[i] as Object, typeof( Object ), true );
@@ -128,11 +141,14 @@ namespace InspectPlusNamespace
 					GUI.enabled = true;
 				}
 
-				Event ev = Event.current;
-				if( ev.type == EventType.MouseDown && ev.button == 0 && ev.mousePosition.x <= EditorGUIUtility.labelWidth && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+				if( activeClipboardIndex == i )
+					GUILayout.EndHorizontal();
+
+				if( ev.type == EventType.MouseDown && ev.button == 0 && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 				{
 					activeClipboardIndex = i;
 					Repaint();
+					ev.Use();
 				}
 				else if( ev.type == EventType.ContextClick && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 				{
@@ -142,10 +158,53 @@ namespace InspectPlusNamespace
 					menu.AddItem( new GUIContent( "Copy" ), false, SetActiveClipboard, j );
 					menu.AddItem( new GUIContent( "Remove" ), false, RemoveClipboard, j );
 					menu.ShowAsContext();
+
+					GUIUtility.keyboardControl = 0;
 				}
 			}
 
 			EditorGUILayout.EndScrollView();
+
+			if( ( ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated ) && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+			{
+				// Accept drag&drop
+				DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+				if( ev.type == EventType.DragPerform )
+				{
+					DragAndDrop.AcceptDrag();
+
+					Object[] draggedObjects = DragAndDrop.objectReferences;
+					for( int i = 0; i < draggedObjects.Length; i++ )
+						AddToClipboard( draggedObjects[i], "DRAG&DROP" );
+				}
+
+				ev.Use();
+			}
+			else if( ev.type == EventType.KeyDown )
+			{
+				// KeyCode.Delete won't be captured by PasteBinWindow if an ObjectField has keyboard focus, therefore
+				// there are some "GUIUtility.keyboardControl = 0;" calls here and there to remove keyboard focus
+				if( ev.keyCode == KeyCode.Delete )
+				{
+					RemoveClipboard( activeClipboardIndex );
+					Repaint();
+					ev.Use();
+				}
+				else if( ev.keyCode == KeyCode.UpArrow )
+				{
+					activeClipboardIndex = Mathf.Max( 0, activeClipboardIndex - 1 );
+					GUIUtility.keyboardControl = 0;
+					Repaint();
+					ev.Use();
+				}
+				else if( ev.keyCode == KeyCode.DownArrow )
+				{
+					activeClipboardIndex = Mathf.Min( clipboard.Count - 1, activeClipboardIndex + 1 );
+					GUIUtility.keyboardControl = 0;
+					Repaint();
+					ev.Use();
+				}
+			}
 
 			EditorGUIUtility.wideMode = originalWideMode;
 			EditorGUIUtility.labelWidth = originalLabelWidth;

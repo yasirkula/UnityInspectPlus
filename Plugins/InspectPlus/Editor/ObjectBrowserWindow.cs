@@ -128,7 +128,8 @@ namespace InspectPlusNamespace
 			Rect rect = new Rect( Vector2.zero, position.size );
 
 			// Draw borders around the window
-			GUI.Box( rect, GUIContent.none );
+			if( Event.current.type == EventType.Repaint )
+				EditorStyles.helpBox.Draw( rect, false, false, false, false );
 
 			rect.height -= EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
 			scrollPosition = GUI.BeginScrollView( rect, scrollPosition, new Rect( 0f, 0f, rect.width, objects.Count * ( EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing ) + 5f ), false, false, GUIStyle.none, GUI.skin.verticalScrollbar );
@@ -195,15 +196,16 @@ namespace InspectPlusNamespace
 			rect.x += EditorGUIUtility.standardVerticalSpacing;
 			rect.width -= 2f * EditorGUIUtility.standardVerticalSpacing;
 
-			float labelWidth = EditorGUIUtility.labelWidth;
+			float originalLabelWidth = EditorGUIUtility.labelWidth;
 			EditorGUIUtility.labelWidth = 75f;
 
 			EditorGUI.BeginChangeCheck();
-			sortType = (SortType) EditorGUI.EnumPopup( rect, "Sort by:", sortType, EditorStyles.toolbarDropDown );
+
+			sortType = (SortType) EditorGUI.EnumPopup( rect, "Sort by:", sortType );
 			if( EditorGUI.EndChangeCheck() )
 				SortObjects();
 
-			EditorGUIUtility.labelWidth = labelWidth;
+			EditorGUIUtility.labelWidth = originalLabelWidth;
 		}
 
 		private void SortObjects()
