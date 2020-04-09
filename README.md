@@ -4,9 +4,11 @@
 
 This plugin helps you view an object's Inspector in a separate tab/window, copy&paste the values of variables in the Inspector and inspect all variables of an object (including non-serializable and static variables) in an enhanced Debug mode.
 
-After importing [InspectPlus.unitypackage](https://github.com/yasirkula/UnityInspectPlus/releases) to your project, you are good to go!
+**[Support the Developer ☕](https://yasirkula.itch.io/unity3d)**
 
 ## How To
+
+After importing [InspectPlus.unitypackage](https://github.com/yasirkula/UnityInspectPlus/releases) to your project, you are good to go!
 
 - You can open the Inspect+ window in a number of ways: 
   - right clicking an object in *Project* or *Hierarchy* windows
