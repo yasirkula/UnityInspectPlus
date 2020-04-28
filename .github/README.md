@@ -6,9 +6,16 @@ This plugin helps you view an object's Inspector in a separate tab/window, copy&
 
 **[Support the Developer ☕](https://yasirkula.itch.io/unity3d)**
 
-## How To
+## INSTALLATION
 
-After importing [InspectPlus.unitypackage](https://github.com/yasirkula/UnityInspectPlus/releases) to your project, you are good to go!
+There are 3 ways to install this plugin:
+
+- import [InspectPlus.unitypackage](https://github.com/yasirkula/UnityInspectPlus/releases) via *Assets-Import Package*
+- clone/[download](https://github.com/yasirkula/UnityInspectPlus/archive/master.zip) this repository and move the *Plugins* folder to your Unity project's *Assets* folder
+- *(via Package Manager)* add the following line to *Packages/manifest.json*:
+  - `"com.yasirkula.inspectplus": "https://github.com/yasirkula/UnityInspectPlus.git",`
+
+## HOW TO
 
 - You can open the Inspect+ window in a number of ways: 
   - right clicking an object in *Project* or *Hierarchy* windows
