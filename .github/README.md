@@ -8,12 +8,14 @@ This plugin helps you view an object's Inspector in a separate tab/window, copy&
 
 ## INSTALLATION
 
-There are 3 ways to install this plugin:
+There are 4 ways to install this plugin:
 
 - import [InspectPlus.unitypackage](https://github.com/yasirkula/UnityInspectPlus/releases) via *Assets-Import Package*
 - clone/[download](https://github.com/yasirkula/UnityInspectPlus/archive/master.zip) this repository and move the *Plugins* folder to your Unity project's *Assets* folder
 - *(via Package Manager)* add the following line to *Packages/manifest.json*:
   - `"com.yasirkula.inspectplus": "https://github.com/yasirkula/UnityInspectPlus.git",`
+- *(via [OpenUPM](https://openupm.com))* after installing [openupm-cli](https://github.com/openupm/openupm-cli), run the following command:
+  - `openupm add com.yasirkula.inspectplus`
 
 ## HOW TO
 
