@@ -10,6 +10,8 @@ using UnityEditor.Experimental.AssetImporters;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
+using SerializedClipboardElement = InspectPlusNamespace.SerializedClipboard.IPObject;
+using SerializedClipboardUnityObject = InspectPlusNamespace.SerializedClipboard.IPUnityObject;
 
 namespace InspectPlusNamespace
 {
@@ -88,7 +90,16 @@ namespace InspectPlusNamespace
 		private static Type assetImporterEditorType;
 		private static PropertyInfo assetImporterShowImportedObjectProperty;
 #endif
+
+#if UNITY_2018_1_OR_NEWER
+		private static MethodInfo assetImporterEditorSetterMethod;
+#else
 		private static FieldInfo assetImporterEditorField;
+#endif
+
+#if UNITY_2019_2_OR_NEWER
+		private static MethodInfo showApplyRevertDialogMethod;
+#endif
 
 		// Serializing CustomProjectWindow makes the TreeView's state (collapsed entries etc.) persist between editor sessions
 		[SerializeField]
@@ -149,6 +160,12 @@ namespace InspectPlusNamespace
 			PasteBinWindow.Show();
 		}
 
+		[MenuItem( "Window/Inspect+/Settings" )]
+		private static void ShowSettings()
+		{
+			Selection.activeObject = InspectPlusSettings.Instance;
+		}
+
 		[InitializeOnLoadMethod]
 		private static void Initialize()
 		{
@@ -166,12 +183,18 @@ namespace InspectPlusNamespace
 				addComponentButton = null;
 			}
 
-#if UNITY_2017_1_OR_NEWER
+#if UNITY_2018_1_OR_NEWER
+			assetImporterEditorSetterMethod = typeof( AssetImporterEditor ).GetMethod( "InternalSetAssetImporterTargetEditor", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
+#elif UNITY_2017_1_OR_NEWER
 			assetImporterEditorField = typeof( AssetImporterEditor ).GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
 #else
 			assetImporterEditorType = typeof( EditorApplication ).Assembly.GetType( "UnityEditor.AssetImporterInspector" );
 			assetImporterShowImportedObjectProperty = assetImporterEditorType.GetProperty( "showImportedObject", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
 			assetImporterEditorField = assetImporterEditorType.GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
+#endif
+
+#if UNITY_2019_2_OR_NEWER
+			showApplyRevertDialogMethod = typeof( AssetImporterEditor ).GetMethod( "CheckForApplyOnClose", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
 #endif
 
 			favoritesIconNoTooltip = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture );
@@ -218,6 +241,10 @@ namespace InspectPlusNamespace
 			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
 			EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
 #endif
+#if UNITY_2019_2_OR_NEWER
+			EditorApplication.wantsToQuit -= ApplicationWantsToQuit;
+			EditorApplication.wantsToQuit += ApplicationWantsToQuit;
+#endif
 
 			if( mainObject )
 			{
@@ -259,6 +286,9 @@ namespace InspectPlusNamespace
 #if UNITY_2017_2_OR_NEWER
 			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
 #endif
+#if UNITY_2019_2_OR_NEWER
+			EditorApplication.wantsToQuit -= ApplicationWantsToQuit;
+#endif
 
 			historyHolder.Clear();
 			favoritesHolder.Clear();
@@ -278,7 +308,17 @@ namespace InspectPlusNamespace
 
 			DestroyImmediate( projectWindowSelectionEditor );
 			projectWindowSelectionEditor = null;
+
+			SetInspectorAssetDrawer( null );
 		}
+
+#if UNITY_2019_2_OR_NEWER
+		private bool ApplicationWantsToQuit()
+		{
+			SetInspectorAssetDrawer( null ); // Show Apply/Revert dialog if necessary
+			return true;
+		}
+#endif
 
 		private void OnFocus()
 		{
@@ -299,7 +339,7 @@ namespace InspectPlusNamespace
 
 				DestroyImmediate( projectWindowSelectionEditor );
 				projectWindowSelectionEditor = null;
-				inspectorAssetDrawer = null;
+				SetInspectorAssetDrawer( null );
 			}
 			else
 			{
@@ -403,22 +443,34 @@ namespace InspectPlusNamespace
 		[MenuItem( "CONTEXT/Material/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		private static void ContextMenuItemCopyObject( MenuCommand command )
 		{
+			// Passing null as context parameter because we don't want to calculate a "./" RelativePath for this clipboard in XML mode
 			if( command.context )
-				PasteBinWindow.AddToClipboard( command.context, "CONTEXT" );
+				PasteBinWindow.AddToClipboard( command.context, "CONTEXT", null );
 			else
-				PasteBinWindow.AddToClipboard( Selection.activeObject, "CONTEXT" );
+				PasteBinWindow.AddToClipboard( Selection.activeObject, "CONTEXT", null );
+		}
+
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_LABEL, priority = 1450 )]
+		private static void ContextMenuItemCopyComponent( MenuCommand command )
+		{
+			if( command.context )
+				PasteBinWindow.AddToClipboard( command.context, "CONTEXT", command.context );
+			else
+				PasteBinWindow.AddToClipboard( Selection.activeObject, "CONTEXT", Selection.activeObject );
 		}
 
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
 		private static void ContextMenuItemPasteObject( MenuCommand command )
 		{
-			Object source = PasteBinWindow.ActiveClipboard as Object;
+			object clipboard = PasteBinWindow.ActiveClipboard;
+			Object source = clipboard as Object;
 			Object target = command.context;
-			if( !source || source == target )
+			if( !( clipboard is SerializedClipboard ) && ( !source || source == target ) )
 				return;
 
-			if( source.GetType() == target.GetType() )
+			if( source && source.GetType() == target.GetType() )
 			{
 				Undo.RecordObject( target, "Paste Values" );
 				EditorUtility.CopySerialized( source, target );
@@ -426,55 +478,111 @@ namespace InspectPlusNamespace
 			else
 			{
 				// Perform a name-wise paste
-				Dictionary<string, SerializedProperty> sourceProperties = new Dictionary<string, SerializedProperty>( 32 );
-				SerializedProperty property = new SerializedObject( source ).GetIterator();
-				if( property.NextVisible( true ) )
+				Dictionary<string, SerializedProperty> sourceProperties = null;
+				Dictionary<string, SerializedClipboardElement> sourcePropertiesSerialized = null;
+				if( ( clipboard is SerializedClipboard ) )
 				{
-					do
+					sourcePropertiesSerialized = new Dictionary<string, SerializedClipboardElement>( 32 );
+					SerializedClipboardElement[] propertiesSerialized = ( (SerializedClipboard) clipboard ).Values;
+					for( int i = 1; i < propertiesSerialized.Length; i++ )
+					{
+						if( !string.IsNullOrEmpty( propertiesSerialized[i].Name ) )
+							sourcePropertiesSerialized[propertiesSerialized[i].Name] = propertiesSerialized[i];
+					}
+				}
+				else
+				{
+					sourceProperties = new Dictionary<string, SerializedProperty>( 32 );
+					foreach( SerializedProperty property in new SerializedObject( source ).EnumerateDirectChildren() )
 					{
 						if( property.name != "m_Script" )
 							sourceProperties[property.name] = property.Copy();
-					} while( property.NextVisible( false ) );
+					}
 				}
 
-				property = new SerializedObject( target ).GetIterator();
-				if( property.NextVisible( true ) )
-				{
-					System.Text.StringBuilder sb = Utilities.stringBuilder;
-					sb.Length = 0;
-					sb.AppendLine( "Pasted variable(s):" );
+				System.Text.StringBuilder sb = Utilities.stringBuilder;
+				sb.Length = 0;
+				sb.AppendLine( "Pasted variable(s):" );
 
-					int pastes = 0;
-					do
+				int pastes = 0;
+				SerializedObject targetSerializedObject = new SerializedObject( target );
+				foreach( SerializedProperty property in targetSerializedObject.EnumerateDirectChildren() )
+				{
+					if( property.name == "m_Script" )
+						continue;
+
+					bool foundMatchingProperty = false;
+					object _clipboard = null;
+					if( sourceProperties != null )
 					{
 						SerializedProperty matchingProperty;
 						if( sourceProperties.TryGetValue( property.name, out matchingProperty ) )
 						{
-							object clipboard = matchingProperty.CopyValue();
-							if( property.CanPasteValue( clipboard ) )
-							{
-								property.PasteValue( clipboard );
-
-								sb.Append( "- " ).AppendLine( property.name );
-								pastes++;
-							}
+							_clipboard = matchingProperty.CopyValue();
+							foundMatchingProperty = true;
 						}
-					} while( property.NextVisible( false ) );
-
-					if( pastes > 0 )
-					{
-						property.serializedObject.ApplyModifiedProperties();
-						Debug.Log( sb.ToString() );
 					}
+					else
+					{
+						SerializedClipboardElement matchingProperty;
+						if( sourcePropertiesSerialized.TryGetValue( property.name, out matchingProperty ) )
+						{
+							_clipboard = matchingProperty.GetClipboardObject( target );
+							foundMatchingProperty = true;
+						}
+					}
+
+					if( foundMatchingProperty && property.CanPasteValue( _clipboard, true ) )
+					{
+						property.PasteValue( _clipboard );
+
+						sb.Append( "- " ).AppendLine( property.name );
+						pastes++;
+					}
+				}
+
+				if( pastes > 0 )
+				{
+					targetSerializedObject.ApplyModifiedProperties();
+					Debug.Log( sb.ToString() );
 				}
 			}
 		}
 
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_LABEL, validate = true )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_LABEL, validate = true )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_LABEL, validate = true )]
 		private static bool ContextMenuItemPasteObjectValidate( MenuCommand command )
 		{
-			return ( PasteBinWindow.ActiveClipboard as Object ) && !ReferenceEquals( PasteBinWindow.ActiveClipboard, command.context );
+			if( !command.context )
+			{
+				Debug.LogError( "Empty context, please report it to Inspect+'s author." );
+				return false;
+			}
+
+			if( ( command.context.hideFlags & HideFlags.NotEditable ) == HideFlags.NotEditable )
+				return false;
+
+			object clipboard = PasteBinWindow.ActiveClipboard;
+			if( clipboard is SerializedClipboard )
+			{
+				// Clipboard must contain the serialized Object's fields, as well
+				if( ( (SerializedClipboard) clipboard ).Values.Length <= 1 )
+					return false;
+
+				SerializedClipboardUnityObject serializedObject = ( (SerializedClipboard) clipboard ).Values[0] as SerializedClipboardUnityObject;
+				bool isSerializedObjectMaterial = serializedObject != null && serializedObject.TypeIndex == 0 && ( (SerializedClipboard) clipboard ).Types[0].Name == "Material";
+
+				// Allow pasting materials to materials only
+				return isSerializedObjectMaterial == ( command.context is Material );
+			}
+
+			Object clipboardObject = clipboard as Object;
+			if( !clipboardObject || clipboardObject == command.context )
+				return false;
+
+			// Allow pasting materials to materials only
+			return ( clipboardObject is Material ) == ( command.context is Material );
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, validate = true )]
@@ -549,14 +657,14 @@ namespace InspectPlusNamespace
 			}
 
 			if( !property.hasMultipleDifferentValues && ( !isUnityObjectType || obj ) )
-				menu.AddItem( new GUIContent( "Copy Value" ), false, CopyValue, property.Copy() );
+				menu.AddItem( new GUIContent( CONTEXT_COPY_LABEL ), false, CopyValue, property.Copy() );
 			else
-				menu.AddDisabledItem( new GUIContent( "Copy Value" ) );
+				menu.AddDisabledItem( new GUIContent( CONTEXT_COPY_LABEL ) );
 
-			if( !property.CanPasteValue( PasteBinWindow.ActiveClipboard ) )
-				menu.AddDisabledItem( new GUIContent( "Paste Value" ) );
+			if( !property.CanPasteValue( PasteBinWindow.ActiveClipboard, false ) )
+				menu.AddDisabledItem( new GUIContent( CONTEXT_PASTE_LABEL ) );
 			else
-				menu.AddItem( new GUIContent( "Paste Value" ), false, PasteValue, property.Copy() );
+				menu.AddItem( new GUIContent( CONTEXT_PASTE_LABEL ), false, PasteValue, property.Copy() );
 		}
 
 		public static void OnObjectRightClicked( GenericMenu menu, Object obj )
@@ -839,17 +947,19 @@ namespace InspectPlusNamespace
 						{
 							Editor objEditor = Editor.CreateEditor( obj );
 							if( objEditor )
+							{
+#if UNITY_2018_1_OR_NEWER
+								assetImporterEditorSetterMethod.Invoke( _inspectorAssetDrawer, new object[1] { objEditor } );
+#else
 								assetImporterEditorField.SetValue( _inspectorAssetDrawer, objEditor );
+#endif
+							}
 						}
 					}
 				}
 			}
 
-			if( inspectorAssetDrawer != _inspectorAssetDrawer )
-			{
-				DestroyImmediate( inspectorAssetDrawer );
-				inspectorAssetDrawer = _inspectorAssetDrawer;
-			}
+			SetInspectorAssetDrawer( _inspectorAssetDrawer );
 
 #if UNITY_2017_1_OR_NEWER
 			if( !inspectorAssetDrawer || inspectorAssetDrawer.showImportedObject )
@@ -1068,6 +1178,8 @@ namespace InspectPlusNamespace
 
 			inspectorScrollPosition = EditorGUILayout.BeginScrollView( inspectorScrollPosition );
 
+			GUILayout.BeginVertical(); // Needed on 2019.2 or newer for material Inspectors to be drawn correctly. Problematic line here: https://github.com/Unity-Technologies/UnityCsReference/blob/befa918e671668a919f25a5d57d521072d79f560/Editor/Mono/Inspector/MaterialEditor.cs#L1659
+
 #if APPLY_HORIZONTAL_PADDING
 			GUILayout.BeginHorizontal();
 			GUILayout.Space( INSPECTOR_HORIZONTAL_PADDING );
@@ -1100,7 +1212,7 @@ namespace InspectPlusNamespace
 					{
 						GUILayout.Space( 30 );
 
-						Rect importedObjectHeaderRect = GUILayoutUtility.GetRect( 0, 100000, 21f, 21f );
+						Rect importedObjectHeaderRect = GUILayoutUtility.GetRect( 0f, 100000f, 21f, 21f );
 						GUI.Box( importedObjectHeaderRect, "Imported Object" );
 
 #if !UNITY_2019_3_OR_NEWER
@@ -1137,17 +1249,24 @@ namespace InspectPlusNamespace
 					// Show Add Component button
 					if( addComponentButton != null && mainObject is GameObject )
 					{
-						GUILayout.Space( 5 );
-						DrawHorizontalLine();
-
-						Rect rect = GUILayoutUtility.GetRect( addComponentButtonLabel, GUI.skin.button, addComponentButtonHeight );
-						if( EditorGUI.DropdownButton( rect, addComponentButtonLabel, FocusType.Passive, GUI.skin.button ) )
+#if UNITY_2018_3_OR_NEWER
+						if( !PrefabUtility.IsPartOfImmutablePrefab( mainObject ) || !AssetDatabase.Contains( mainObject ) )
+#else
+						if( PrefabUtility.GetPrefabType( mainObject ) != PrefabType.ModelPrefab )
+#endif
 						{
-							if( (bool) addComponentButton.Invoke( null, new object[2] { rect, new GameObject[1] { (GameObject) mainObject } } ) )
-								GUIUtility.ExitGUI();
-						}
+							GUILayout.Space( 5 );
+							DrawHorizontalLine();
 
-						GUILayout.Space( 5 );
+							Rect rect = GUILayoutUtility.GetRect( addComponentButtonLabel, GUI.skin.button, addComponentButtonHeight );
+							if( EditorGUI.DropdownButton( rect, addComponentButtonLabel, FocusType.Passive, GUI.skin.button ) )
+							{
+								if( (bool) addComponentButton.Invoke( null, new object[2] { rect, new GameObject[1] { (GameObject) mainObject } } ) )
+									GUIUtility.ExitGUI();
+							}
+
+							GUILayout.Space( 5 );
+						}
 					}
 				}
 
@@ -1176,6 +1295,8 @@ namespace InspectPlusNamespace
 			GUILayout.Space( INSPECTOR_HORIZONTAL_PADDING );
 			GUILayout.EndHorizontal();
 #endif
+
+			GUILayout.EndVertical();
 
 			EditorGUILayout.EndScrollView();
 
@@ -1799,12 +1920,37 @@ namespace InspectPlusNamespace
 			}
 		}
 
+#if UNITY_2017_1_OR_NEWER
+		private void SetInspectorAssetDrawer( AssetImporterEditor assetDrawer )
+#else
+		private void SetInspectorAssetDrawer( Editor assetDrawer )
+#endif
+		{
+			if( inspectorAssetDrawer == assetDrawer )
+				return;
+
+			if( inspectorAssetDrawer )
+			{
+#if UNITY_2019_2_OR_NEWER
+				// On newer Unity versions, unfortunately the Apply/Revert dialog isn't displayed automatically when we stop inspecting an asset in Inspect+,
+				// so we must show the Apply/Revert dialog manually and as long as user presses Cancel, continue showing the dialog
+				bool applyRevertFinished;
+				do
+				{
+					applyRevertFinished = (bool) showApplyRevertDialogMethod.Invoke( inspectorAssetDrawer, new object[] { true } );
+				}
+				while( !applyRevertFinished );
+#endif
+
+				DestroyImmediate( inspectorAssetDrawer );
+			}
+
+			inspectorAssetDrawer = assetDrawer;
+		}
+
 		private static void CopyValue( object obj )
 		{
-			SerializedProperty prop = (SerializedProperty) obj;
-			object clipboard = prop.CopyValue();
-			if( clipboard != null )
-				PasteBinWindow.AddToClipboard( clipboard, string.Concat( prop.serializedObject.targetObject.name, ".", prop.serializedObject.targetObject.GetType().Name, ".", prop.name ) );
+			PasteBinWindow.AddToClipboard( (SerializedProperty) obj );
 		}
 
 		private static void PasteValue( object obj )

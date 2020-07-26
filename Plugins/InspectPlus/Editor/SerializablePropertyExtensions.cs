@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -8,6 +10,7 @@ namespace InspectPlusNamespace
 {
 	public static class SerializablePropertyExtensions
 	{
+		#region Helper Classes
 		public class GenericObjectClipboard
 		{
 			public readonly string type;
@@ -22,13 +25,11 @@ namespace InspectPlusNamespace
 
 		public class ArrayClipboard
 		{
-			public readonly int size;
 			public readonly string elementType;
 			public readonly object[] elements;
 
-			public ArrayClipboard( int size, string elementType, object[] elements )
+			public ArrayClipboard( string elementType, object[] elements )
 			{
-				this.size = size;
 				this.elementType = elementType;
 				this.elements = elements;
 			}
@@ -54,6 +55,8 @@ namespace InspectPlusNamespace
 			public static implicit operator VectorClipboard( Quaternion q ) { return new VectorClipboard( q.x, q.y, q.z, q.w ); }
 			public static implicit operator VectorClipboard( Rect r ) { return new VectorClipboard( r.xMin, r.yMin, r.width, r.height ); }
 			public static implicit operator VectorClipboard( Bounds b ) { return new VectorClipboard( b.center.x, b.center.y, b.center.z, b.extents.x, b.extents.y, b.extents.z ); }
+			public static implicit operator VectorClipboard( Color c ) { return new VectorClipboard( c.r, c.g, c.b, c.a ); }
+			public static implicit operator VectorClipboard( Color32 c ) { return new VectorClipboard( c.r, c.g, c.b, c.a ); }
 #if UNITY_2017_2_OR_NEWER
 			public static implicit operator VectorClipboard( Vector2Int v ) { return new VectorClipboard( v.x, v.y ); }
 			public static implicit operator VectorClipboard( Vector3Int v ) { return new VectorClipboard( v.x, v.y, v.z ); }
@@ -67,6 +70,8 @@ namespace InspectPlusNamespace
 			public static implicit operator Quaternion( VectorClipboard v ) { return new Quaternion( v.c1, v.c2, v.c3, v.c4 ); }
 			public static implicit operator Rect( VectorClipboard v ) { return new Rect( v.c1, v.c2, v.c3, v.c4 ); }
 			public static implicit operator Bounds( VectorClipboard v ) { return new Bounds( new Vector3( v.c1, v.c2, v.c3 ), new Vector3( v.c4, v.c5, v.c6 ) * 2f ); }
+			public static implicit operator Color( VectorClipboard v ) { return new Color( v.c1, v.c2, v.c3, v.c4 ); }
+			public static implicit operator Color32( VectorClipboard v ) { return new Color32( (byte) Mathf.RoundToInt( v.c1 ), (byte) Mathf.RoundToInt( v.c2 ), (byte) Mathf.RoundToInt( v.c3 ), (byte) Mathf.RoundToInt( v.c4 ) ); }
 #if UNITY_2017_2_OR_NEWER
 			public static implicit operator Vector2Int( VectorClipboard v ) { return new Vector2Int( Mathf.RoundToInt( v.c1 ), Mathf.RoundToInt( v.c2 ) ); }
 			public static implicit operator Vector3Int( VectorClipboard v ) { return new Vector3Int( Mathf.RoundToInt( v.c1 ), Mathf.RoundToInt( v.c2 ), Mathf.RoundToInt( v.c3 ) ); }
@@ -75,10 +80,61 @@ namespace InspectPlusNamespace
 #endif
 		}
 
+		public class ManagedObjectClipboard
+		{
+			public class NestedManagedObject
+			{
+				public readonly object reference;
+				public readonly string relativePath;
+
+				public NestedManagedObject( object reference, string relativePath )
+				{
+					this.reference = reference;
+					this.relativePath = relativePath;
+				}
+			}
+
+			public class NestedUnityObject
+			{
+				public readonly Object reference;
+				public readonly string relativePath;
+
+				public NestedUnityObject( Object reference, string relativePath )
+				{
+					this.reference = reference;
+					this.relativePath = relativePath;
+				}
+			}
+
+			public readonly string type;
+			public readonly object value;
+			public readonly NestedManagedObject[] nestedManagedObjects;
+			public readonly NestedUnityObject[] nestedUnityObjects;
+
+			public ManagedObjectClipboard( string type, object value, NestedManagedObject[] nestedManagedObjects, NestedUnityObject[] nestedUnityObjects )
+			{
+				this.type = type;
+				this.value = value;
+				this.nestedManagedObjects = nestedManagedObjects;
+				this.nestedUnityObjects = nestedUnityObjects;
+			}
+		}
+		#endregion
+
+		private delegate FieldInfo FieldInfoGetter( SerializedProperty p, out Type t );
+
+		private static readonly FieldInfoGetter fieldInfoGetter;
 		private static readonly PropertyInfo gradientValueGetter;
 
 		static SerializablePropertyExtensions()
 		{
+#if UNITY_2019_3_OR_NEWER
+			MethodInfo fieldInfoGetterMethod = typeof( Editor ).Assembly.GetType( "UnityEditor.ScriptAttributeUtility" ).GetMethod( "GetFieldInfoAndStaticTypeFromProperty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
+#else
+			MethodInfo fieldInfoGetterMethod = typeof( Editor ).Assembly.GetType( "UnityEditor.ScriptAttributeUtility" ).GetMethod( "GetFieldInfoFromProperty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
+#endif
+
+			fieldInfoGetter = (FieldInfoGetter) Delegate.CreateDelegate( typeof( FieldInfoGetter ), fieldInfoGetterMethod );
 			gradientValueGetter = typeof( SerializedProperty ).GetProperty( "gradientValue", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
 		}
 
@@ -87,20 +143,68 @@ namespace InspectPlusNamespace
 			switch( property.propertyType )
 			{
 				case SerializedPropertyType.AnimationCurve: return property.animationCurveValue;
-				case SerializedPropertyType.ArraySize: return (long) property.arraySize;
-				case SerializedPropertyType.Boolean: return property.boolValue;
+				case SerializedPropertyType.ArraySize: return (long) property.intValue;
+				case SerializedPropertyType.Boolean: return property.boolValue ? 1L : 0L;
 				case SerializedPropertyType.Bounds: return (VectorClipboard) property.boundsValue;
 #if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.BoundsInt: return (VectorClipboard) property.boundsIntValue;
 #endif
 				case SerializedPropertyType.Character: return property.longValue;
-				case SerializedPropertyType.Color: return property.colorValue;
+				case SerializedPropertyType.Color: return (VectorClipboard) property.colorValue;
 				case SerializedPropertyType.Enum: return (long) property.intValue;
 				case SerializedPropertyType.ExposedReference: return property.exposedReferenceValue;
+#if UNITY_2017_1_OR_NEWER
+				case SerializedPropertyType.FixedBufferSize: return (long) property.intValue;
+#endif
 				case SerializedPropertyType.Float: return property.doubleValue;
 				case SerializedPropertyType.Gradient: return gradientValueGetter.GetValue( property, null );
 				case SerializedPropertyType.Integer: return property.longValue;
 				case SerializedPropertyType.LayerMask: return property.longValue;
+#if UNITY_2019_3_OR_NEWER
+				case SerializedPropertyType.ManagedReference:
+					object value = property.GetTargetObject();
+					if( value == null )
+						return null;
+
+					// Find nested managed references and assets/scene objects
+					List<ManagedObjectClipboard.NestedManagedObject> nestedManagedObjects = null;
+					List<ManagedObjectClipboard.NestedUnityObject> nestedUnityObjects = null;
+					SerializedProperty subProperty = property.Copy();
+					SerializedProperty endProperty = property.GetEndProperty( true );
+					if( subProperty.Next( true ) )
+					{
+						int relativePathStartIndex = property.propertyPath.Length + 1; // Relative path must skip this path and the following '.' (period)
+						while( !SerializedProperty.EqualContents( subProperty, endProperty ) )
+						{
+							if( subProperty.propertyType == SerializedPropertyType.ManagedReference )
+							{
+								object nestedManagedObjectValue = subProperty.GetTargetObject();
+								if( nestedManagedObjectValue != null )
+								{
+									if( nestedManagedObjects == null )
+										nestedManagedObjects = new List<ManagedObjectClipboard.NestedManagedObject>( 2 );
+
+									nestedManagedObjects.Add( new ManagedObjectClipboard.NestedManagedObject( nestedManagedObjectValue, subProperty.propertyPath.Substring( relativePathStartIndex ) ) );
+								}
+							}
+							else if( subProperty.propertyType == SerializedPropertyType.ObjectReference || subProperty.propertyType == SerializedPropertyType.ExposedReference )
+							{
+								Object nestedUnityObjectValue = subProperty.GetTargetObject() as Object;
+								if( nestedUnityObjectValue )
+								{
+									if( nestedUnityObjects == null )
+										nestedUnityObjects = new List<ManagedObjectClipboard.NestedUnityObject>( 2 );
+
+									nestedUnityObjects.Add( new ManagedObjectClipboard.NestedUnityObject( nestedUnityObjectValue, subProperty.propertyPath.Substring( relativePathStartIndex ) ) );
+								}
+							}
+
+							subProperty.Next( subProperty.propertyType == SerializedPropertyType.Generic );
+						}
+					}
+
+					return new ManagedObjectClipboard( property.type, value, nestedManagedObjects == null ? null : nestedManagedObjects.ToArray(), nestedUnityObjects == null ? null : nestedUnityObjects.ToArray() );
+#endif
 				case SerializedPropertyType.ObjectReference: return property.objectReferenceValue;
 				case SerializedPropertyType.Quaternion: return (VectorClipboard) property.quaternionValue;
 				case SerializedPropertyType.Rect: return (VectorClipboard) property.rectValue;
@@ -124,7 +228,7 @@ namespace InspectPlusNamespace
 						for( int i = 0; i < elements.Length; i++ )
 							elements[i] = CopyValue( property.GetArrayElementAtIndex( i ) );
 
-						return new ArrayClipboard( elements.Length, property.arrayElementType, elements );
+						return new ArrayClipboard( property.arrayElementType, elements );
 					}
 #if UNITY_2017_1_OR_NEWER
 					else if( property.isFixedBuffer )
@@ -133,34 +237,23 @@ namespace InspectPlusNamespace
 						for( int i = 0; i < elements.Length; i++ )
 							elements[i] = CopyValue( property.GetFixedBufferElementAtIndex( i ) );
 
-						return new ArrayClipboard( elements.Length, elements.Length > 0 ? property.GetFixedBufferElementAtIndex( 0 ).type : null, elements );
+						return new ArrayClipboard( elements.Length > 0 ? property.GetFixedBufferElementAtIndex( 0 ).type : null, elements );
 					}
 #endif
-					else if( property.hasVisibleChildren )
+					else if( property.hasChildren )
 					{
-						SerializedProperty endProperty = property.GetEndProperty();
-						SerializedProperty iterator = property.Copy();
-						iterator.NextVisible( true );
-
 						int count = 0;
-						while( !SerializedProperty.EqualContents( endProperty, iterator ) )
-						{
+						foreach( SerializedProperty iterator in property.EnumerateDirectChildren() )
 							count++;
-							iterator.NextVisible( false );
-						}
 
 						string type = property.type;
 						object[] values = new object[count];
 
 						if( count > 0 )
 						{
-							property.NextVisible( true );
-
-							for( int i = 0; i < count; i++ )
-							{
-								values[i] = CopyValue( property );
-								property.NextVisible( false );
-							}
+							int valueIndex = 0;
+							foreach( SerializedProperty iterator in property.EnumerateDirectChildren() )
+								values[valueIndex++] = CopyValue( iterator );
 						}
 
 						return new GenericObjectClipboard( type, values );
@@ -173,6 +266,9 @@ namespace InspectPlusNamespace
 
 		public static void PasteValue( this SerializedProperty property, object clipboard )
 		{
+			if( clipboard is SerializedClipboard )
+				clipboard = ( (SerializedClipboard) clipboard ).Values[0].GetClipboardObject( property.serializedObject.targetObject );
+
 			PasteValueInternal( property, clipboard, true );
 		}
 
@@ -198,7 +294,7 @@ namespace InspectPlusNamespace
 					if( clipboard is long ) property.intValue = (int) (long) clipboard;
 					else if( clipboard is string ) property.intValue = ( (string) clipboard )[0];
 					break;
-				case SerializedPropertyType.Color: property.colorValue = (Color) clipboard; break;
+				case SerializedPropertyType.Color: property.colorValue = (VectorClipboard) clipboard; break;
 				case SerializedPropertyType.Enum: property.intValue = (int) (long) clipboard; break;
 				case SerializedPropertyType.ExposedReference: TryAssignClipboardToObjectProperty( property, clipboard, false ); break;
 				case SerializedPropertyType.Float:
@@ -211,6 +307,43 @@ namespace InspectPlusNamespace
 					else if( clipboard is double ) property.longValue = (long) (double) clipboard;
 					break;
 				case SerializedPropertyType.LayerMask: property.intValue = (int) (long) clipboard; break;
+#if UNITY_2019_3_OR_NEWER
+				case SerializedPropertyType.ManagedReference:
+					if( clipboard == null )
+						property.managedReferenceValue = null;
+					else
+					{
+						// property.managedReferenceValue copies the value, so assigning the same value to 2 different
+						// SerializedProperty's managedReferenceValue will result in 2 copies of that value, which is not the
+						// SerializeReference way. But if we assign the value with reflection, then the original value won't be
+						// copied at each assignment. For this reason, try assigning the value with reflection first and if that
+						// fails, fallback to managedReferenceValue
+						try
+						{
+							if( !property.serializedObject.isEditingMultipleObjects )
+							{
+								Undo.RecordObject( property.serializedObject.targetObject, string.Empty );
+								property.SetTargetObject( ( (ManagedObjectClipboard) clipboard ).value );
+							}
+							else
+							{
+								Object[] targetObjects = property.serializedObject.targetObjects;
+								for( int i = 0; i < targetObjects.Length; i++ )
+								{
+									Undo.RecordObject( targetObjects[i], string.Empty );
+									new SerializedObject( targetObjects[i] ).FindProperty( property.propertyPath ).SetTargetObject( ( (ManagedObjectClipboard) clipboard ).value );
+								}
+							}
+						}
+						catch( Exception e )
+						{
+							Debug.LogException( e );
+							property.managedReferenceValue = ( (ManagedObjectClipboard) clipboard ).value;
+						}
+					}
+
+					break;
+#endif
 				case SerializedPropertyType.ObjectReference: TryAssignClipboardToObjectProperty( property, clipboard, false ); break;
 				case SerializedPropertyType.Quaternion: property.quaternionValue = (VectorClipboard) clipboard; break;
 				case SerializedPropertyType.Rect: property.rectValue = (VectorClipboard) clipboard; break;
@@ -231,8 +364,8 @@ namespace InspectPlusNamespace
 					if( property.isArray )
 					{
 						ArrayClipboard array = (ArrayClipboard) clipboard;
-						property.arraySize = array.size;
-						for( int i = 0; i < array.size; i++ )
+						property.arraySize = array.elements.Length;
+						for( int i = 0; i < array.elements.Length; i++ )
 						{
 							SerializedProperty element = property.GetArrayElementAtIndex( i );
 							PasteValueInternal( element, array.elements[i], false );
@@ -242,7 +375,7 @@ namespace InspectPlusNamespace
 					else if( property.isFixedBuffer )
 					{
 						ArrayClipboard array = (ArrayClipboard) clipboard;
-						int count = Mathf.Min( array.size, property.fixedBufferSize );
+						int count = Mathf.Min( array.elements.Length, property.fixedBufferSize );
 						for( int i = 0; i < count; i++ )
 						{
 							SerializedProperty element = property.GetFixedBufferElementAtIndex( i );
@@ -250,18 +383,14 @@ namespace InspectPlusNamespace
 						}
 					}
 #endif
-					else if( property.hasVisibleChildren )
+					else if( property.hasChildren )
 					{
 						GenericObjectClipboard obj = (GenericObjectClipboard) clipboard;
 						if( obj.values.Length > 0 )
 						{
-							property.NextVisible( true );
-
-							for( int i = 0; i < obj.values.Length; i++ )
-							{
-								PasteValueInternal( property, obj.values[i], false );
-								property.NextVisible( false );
-							}
+							int valueIndex = 0;
+							foreach( SerializedProperty iterator in property.EnumerateDirectChildren() )
+								PasteValueInternal( iterator, obj.values[valueIndex++], false );
 						}
 					}
 
@@ -272,13 +401,29 @@ namespace InspectPlusNamespace
 				property.serializedObject.ApplyModifiedProperties();
 		}
 
-		public static bool CanPasteValue( this SerializedProperty property, object clipboard )
+		public static bool CanPasteValue( this SerializedProperty property, object clipboard, bool allowNullObjectValues )
 		{
-			if( clipboard == null || clipboard.Equals( null ) )
-				return false;
-
 			if( !property.editable )
 				return false;
+
+			if( clipboard != null && clipboard is SerializedClipboard )
+				clipboard = ( (SerializedClipboard) clipboard ).Values[0].GetClipboardObject( property.serializedObject.targetObject );
+
+			if( clipboard == null || clipboard.Equals( null ) )
+			{
+				if( !allowNullObjectValues )
+					return false;
+
+				switch( property.propertyType )
+				{
+					case SerializedPropertyType.ExposedReference: return true;
+#if UNITY_2019_3_OR_NEWER
+					case SerializedPropertyType.ManagedReference: return true;
+#endif
+					case SerializedPropertyType.ObjectReference: return true;
+					default: return false;
+				}
+			}
 
 			switch( property.propertyType )
 			{
@@ -290,13 +435,29 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.BoundsInt: return clipboard is VectorClipboard;
 #endif
 				case SerializedPropertyType.Character: return ( clipboard is long && (long) clipboard <= 255L && (long) clipboard >= 0L ) || ( clipboard is string && ( (string) clipboard ).Length > 0 );
-				case SerializedPropertyType.Color: return clipboard is Color;
+				case SerializedPropertyType.Color: return clipboard is VectorClipboard;
 				case SerializedPropertyType.Enum: return clipboard is long;
 				case SerializedPropertyType.ExposedReference: return TryAssignClipboardToObjectProperty( property, clipboard, true );
 				case SerializedPropertyType.Float: return clipboard is double || clipboard is long;
 				case SerializedPropertyType.Gradient: return clipboard is Gradient;
 				case SerializedPropertyType.Integer: return clipboard is long || clipboard is double;
 				case SerializedPropertyType.LayerMask: return clipboard is long;
+#if UNITY_2019_3_OR_NEWER
+				case SerializedPropertyType.ManagedReference:
+					if( clipboard is ManagedObjectClipboard )
+					{
+						string fieldTypeRaw = property.managedReferenceFieldTypename;
+						if( string.IsNullOrEmpty( fieldTypeRaw ) )
+							return ( (ManagedObjectClipboard) clipboard ).type == property.type;
+
+						string[] fieldTypeSplit = fieldTypeRaw.Split( ' ' );
+						Type fieldType = Assembly.Load( fieldTypeSplit[0] ).GetType( fieldTypeSplit[1] );
+
+						return fieldType.IsAssignableFrom( ( (ManagedObjectClipboard) clipboard ).value.GetType() );
+					}
+					else
+						return false;
+#endif
 				case SerializedPropertyType.ObjectReference: return TryAssignClipboardToObjectProperty( property, clipboard, true );
 				case SerializedPropertyType.Quaternion: return clipboard is VectorClipboard;
 				case SerializedPropertyType.Rect: return clipboard is VectorClipboard;
@@ -320,7 +481,7 @@ namespace InspectPlusNamespace
 					else if( property.isFixedBuffer )
 						return clipboard is ArrayClipboard && property.fixedBufferSize > 0 && ( (ArrayClipboard) clipboard ).elementType == property.GetFixedBufferElementAtIndex( 0 ).type;
 #endif
-					else if( property.hasVisibleChildren )
+					else if( property.hasChildren )
 						return clipboard is GenericObjectClipboard && ( (GenericObjectClipboard) clipboard ).type == property.type;
 					else
 						return false;
@@ -435,5 +596,240 @@ namespace InspectPlusNamespace
 
 			return false;
 		}
+
+		#region Serialized Property Enumerators
+		public static IEnumerable<SerializedProperty> EnumerateDirectChildren( this SerializedObject serializedObject )
+		{
+			return EnumerateDirectChildrenInternal( serializedObject.GetIterator(), true );
+		}
+
+		public static IEnumerable<SerializedProperty> EnumerateDirectChildren( this SerializedProperty property )
+		{
+			return EnumerateDirectChildrenInternal( property, false );
+		}
+
+		private static IEnumerable<SerializedProperty> EnumerateDirectChildrenInternal( SerializedProperty property, bool isRootProperty )
+		{
+			if( !property.hasChildren )
+				yield break;
+
+			SerializedProperty propertyAll = property.Copy();
+			SerializedProperty propertyVisible = property.Copy();
+			SerializedProperty endProperty = isRootProperty ? null : property.GetEndProperty( true );
+			if( propertyAll.Next( true ) )
+			{
+				bool iteratingVisible = propertyVisible.NextVisible( true );
+				do
+				{
+					bool isVisible = iteratingVisible && SerializedProperty.EqualContents( propertyAll, propertyVisible );
+					if( isVisible )
+						iteratingVisible = propertyVisible.NextVisible( false );
+					else
+					{
+						Type propFieldType;
+						if( fieldInfoGetter( propertyAll, out propFieldType ) != null )
+							isVisible = true;
+					}
+
+					if( isVisible )
+						yield return propertyAll;
+				} while( propertyAll.Next( false ) && !SerializedProperty.EqualContents( propertyAll, endProperty ) );
+			}
+		}
+		#endregion
+
+		#region SerializedProperty Value Getter With Reflection
+		public static object GetTargetObject( this SerializedProperty property )
+		{
+			return TraversePathAndGetFieldValue( property.serializedObject.targetObject, property.propertyPath );
+		}
+
+		// Credit: http://answers.unity.com/answers/425602/view.html
+		public static object TraversePathAndGetFieldValue( object source, string rawPath )
+		{
+			object result = source;
+			string[] path = rawPath.Replace( ".Array.data[", "[" ).Split( '.' );
+			for( int i = 0; i < path.Length; i++ )
+			{
+				string pathElement = path[i];
+
+				int arrayStartIndex = pathElement.IndexOf( '[' );
+				if( arrayStartIndex < 0 )
+					result = GetFieldValue( result, pathElement );
+				else
+				{
+					string variableName = pathElement.Substring( 0, arrayStartIndex );
+
+					int arrayEndIndex = pathElement.IndexOf( ']', arrayStartIndex + 1 );
+					int arrayElementIndex = int.Parse( pathElement.Substring( arrayStartIndex + 1, arrayEndIndex - arrayStartIndex - 1 ) );
+					result = GetFieldValue( result, variableName, arrayElementIndex );
+				}
+			}
+
+			return result;
+		}
+
+		// Credit: http://answers.unity.com/answers/425602/view.html
+		private static object GetFieldValue( object source, string fieldName )
+		{
+			if( source == null )
+				return null;
+
+			FieldInfo fieldInfo = null;
+			Type type = source.GetType();
+			while( fieldInfo == null && type != typeof( object ) )
+			{
+				fieldInfo = type.GetField( fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly );
+				type = type.BaseType;
+			}
+
+			if( fieldInfo != null )
+				return fieldInfo.GetValue( source );
+
+			PropertyInfo propertyInfo = null;
+			type = source.GetType();
+			while( propertyInfo == null && type != typeof( object ) )
+			{
+				propertyInfo = type.GetProperty( fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly | BindingFlags.IgnoreCase );
+				type = type.BaseType;
+			}
+
+			if( propertyInfo != null )
+				return propertyInfo.GetValue( source, null );
+
+			if( fieldName.Length > 2 && fieldName.StartsWith( "m_", StringComparison.OrdinalIgnoreCase ) )
+				return GetFieldValue( source, fieldName.Substring( 2 ) );
+
+			return null;
+		}
+
+		// Credit: http://answers.unity.com/answers/425602/view.html
+		private static object GetFieldValue( object source, string fieldName, int arrayIndex )
+		{
+			IEnumerable enumerable = GetFieldValue( source, fieldName ) as IEnumerable;
+			if( enumerable == null )
+				return null;
+
+			if( enumerable is IList )
+				return ( (IList) enumerable )[arrayIndex];
+
+			IEnumerator enumerator = enumerable.GetEnumerator();
+			for( int i = 0; i <= arrayIndex; i++ )
+				enumerator.MoveNext();
+
+			return enumerator.Current;
+		}
+		#endregion
+
+		#region SerializedProperty Value Setter With Reflection
+		public static void SetTargetObject( this SerializedProperty property, object value )
+		{
+			TraversePathAndSetFieldValue( property.serializedObject.targetObject, property.propertyPath, value );
+		}
+
+		// Credit: http://answers.unity.com/answers/425602/view.html
+		public static void TraversePathAndSetFieldValue( object source, string rawPath, object value )
+		{
+			// Assume we have component A which has a struct variable called B and we want to change B's C variable's value
+			// with this function. If all we do is get B's corresponding FieldInfo for C and call its SetValue function, we
+			// won't really change the value of A.B.C because B is a struct which was boxed when we called SetValue and we
+			// essentially changed a copy of B, not B itself. So, we need to keep a reference to our boxed B variable, change
+			// its C variable and then assign the boxed B value back to A. This way, we will in fact change the value of A.B.C
+			// 
+			// In this code, there are 2 for loops. In the first loop, we are basically storing the boxed values (B) in setValues
+			// and at the end of the loop, we change B.C's value. In the second loop, we assign boxed values back to their parent
+			// variables (assigning boxed B value back to A)
+			string[] path = rawPath.Replace( ".Array.data[", "[" ).Split( '.' );
+			object[] setValues = new object[path.Length];
+			setValues[0] = source;
+			for( int i = 0; i < path.Length; i++ )
+			{
+				string pathElement = path[i];
+
+				int arrayStartIndex = pathElement.IndexOf( '[' );
+				if( arrayStartIndex < 0 )
+				{
+					if( i < path.Length - 1 )
+						setValues[i + 1] = GetFieldValue( setValues[i], pathElement );
+					else
+						SetFieldValue( setValues[i], pathElement, value );
+				}
+				else
+				{
+					string variableName = pathElement.Substring( 0, arrayStartIndex );
+
+					int arrayEndIndex = pathElement.IndexOf( ']', arrayStartIndex + 1 );
+					int arrayElementIndex = int.Parse( pathElement.Substring( arrayStartIndex + 1, arrayEndIndex - arrayStartIndex - 1 ) );
+					if( i < path.Length - 1 )
+						setValues[i + 1] = GetFieldValue( setValues[i], pathElement, arrayElementIndex );
+					else
+						SetFieldValue( setValues[i], pathElement, arrayElementIndex, value );
+				}
+			}
+
+			for( int i = path.Length - 2; i >= 0; i-- )
+			{
+				string pathElement = path[i];
+
+				int arrayStartIndex = pathElement.IndexOf( '[' );
+				if( arrayStartIndex < 0 )
+					SetFieldValue( setValues[i], pathElement, setValues[i + 1] );
+				else
+				{
+					string variableName = pathElement.Substring( 0, arrayStartIndex );
+
+					int arrayEndIndex = pathElement.IndexOf( ']', arrayStartIndex + 1 );
+					int arrayElementIndex = int.Parse( pathElement.Substring( arrayStartIndex + 1, arrayEndIndex - arrayStartIndex - 1 ) );
+					SetFieldValue( setValues[i], pathElement, arrayElementIndex, setValues[i + 1] );
+				}
+			}
+		}
+
+		// Credit: http://answers.unity.com/answers/425602/view.html
+		private static void SetFieldValue( object source, string fieldName, object value )
+		{
+			if( source == null )
+				return;
+
+			FieldInfo fieldInfo = null;
+			Type type = source.GetType();
+			while( fieldInfo == null && type != typeof( object ) )
+			{
+				fieldInfo = type.GetField( fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly );
+				type = type.BaseType;
+			}
+
+			if( fieldInfo != null )
+			{
+				fieldInfo.SetValue( source, value );
+				return;
+			}
+
+			PropertyInfo propertyInfo = null;
+			type = source.GetType();
+			while( propertyInfo == null && type != typeof( object ) )
+			{
+				propertyInfo = type.GetProperty( fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly | BindingFlags.IgnoreCase );
+				type = type.BaseType;
+			}
+
+			if( propertyInfo != null )
+			{
+				propertyInfo.SetValue( source, value, null );
+				return;
+			}
+
+			if( fieldName.Length > 2 && fieldName.StartsWith( "m_", StringComparison.OrdinalIgnoreCase ) )
+				SetFieldValue( source, fieldName.Substring( 2 ), value );
+		}
+
+		// Credit: http://answers.unity.com/answers/425602/view.html
+		private static void SetFieldValue( object source, string fieldName, int arrayIndex, object value )
+		{
+			IEnumerable enumerable = GetFieldValue( source, fieldName ) as IEnumerable;
+			if( enumerable is IList )
+				( (IList) enumerable )[arrayIndex] = value;
+		}
+		#endregion
 	}
 }

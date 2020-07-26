@@ -7,7 +7,7 @@ namespace InspectPlusNamespace
 {
 	public class InspectPlusSettings : ScriptableObject
 	{
-		private const string SAVE_PATH = "Assets/Plugins/InspectPlus/Settings.asset";
+		private const string INITIAL_SAVE_PATH = "Assets/Plugins/InspectPlus/InspectPlusSettings.asset";
 
 		private static InspectPlusSettings m_instance;
 		public static InspectPlusSettings Instance
@@ -16,14 +16,19 @@ namespace InspectPlusNamespace
 			{
 				if( !m_instance )
 				{
-					m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( SAVE_PATH );
+					string[] instances = AssetDatabase.FindAssets( "t:InspectPlusSettings" );
+					if( instances != null && instances.Length > 0 )
+						m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( AssetDatabase.GUIDToAssetPath( instances[0] ) );
+
 					if( !m_instance )
 					{
-						Directory.CreateDirectory( Path.GetDirectoryName( SAVE_PATH ) );
+						Directory.CreateDirectory( Path.GetDirectoryName( INITIAL_SAVE_PATH ) );
 
-						AssetDatabase.CreateAsset( CreateInstance<InspectPlusSettings>(), SAVE_PATH );
+						AssetDatabase.CreateAsset( CreateInstance<InspectPlusSettings>(), INITIAL_SAVE_PATH );
 						AssetDatabase.SaveAssets();
-						m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( SAVE_PATH );
+						m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( INITIAL_SAVE_PATH );
+
+						Debug.Log( "Created Inspect+ settings file at " + INITIAL_SAVE_PATH + ". You can move this file around freely." );
 					}
 				}
 
@@ -33,9 +38,16 @@ namespace InspectPlusNamespace
 
 		public List<Object> FavoriteAssets = new List<Object>();
 
+		[Space]
 		[Tooltip( "Determines whether Favorites and History lists should be drawn horizontally or vertically" )]
 		public bool CompactFavoritesAndHistoryLists = false;
 
+		[Tooltip( "New windows should show Favorites list by default (if Favorites is not empty)" )]
+		public bool ShowFavoritesByDefault = true;
+		[Tooltip( "New windows should show History list by default (if History is not empty)" )]
+		public bool ShowHistoryByDefault = true;
+
+		[Space]
 		[Tooltip( "Height of the Favorites list" )]
 		public float FavoritesHeight = 42f;
 		[Tooltip( "Height of the History list" )]
@@ -43,21 +55,30 @@ namespace InspectPlusNamespace
 		[Tooltip( "Height of the compact Favorites and History lists" )]
 		public float CompactListHeight = 28f;
 
+		[Space]
 		[HideInInspector]
 		public ObjectBrowserWindow.SortType FavoritesSortType = ObjectBrowserWindow.SortType.Name;
 		[HideInInspector]
 		public ObjectBrowserWindow.SortType HistorySortType = ObjectBrowserWindow.SortType.None;
 
+		[Space]
 		[Tooltip( "Refresh and repaint interval of the Inspector in Normal mode" )]
 		public float NormalModeRefreshInterval = 0.5f;
 		[Tooltip( "Refresh interval of the Inspector in Debug mode" )]
 		public float DebugModeRefreshInterval = 0.5f;
 
-		[Tooltip( "New windows should show Favorites list by default (if Favorites is not empty)" )]
-		public bool ShowFavoritesByDefault = true;
-		[Tooltip( "New windows should show History list by default (if History is not empty)" )]
-		public bool ShowHistoryByDefault = true;
-		[Tooltip( "While inspecting a folder, selecting files/folders inside the folder will update Unity's selection, as well" )]
+		[Space]
+		[Tooltip( "When an Object's value is copied with Inspect+, copied data will be stored in system clipboard in XML format. It is slower (may not be noticeable) but the data can be pasted to other Unity projects or to a text editor like Notepad" )]
+		public bool UseXMLCopyFormat = true;
+
+		[Tooltip( "Determines whether the XML data will be compact (single line) or human-readable (multiple lines)" )]
+		public bool OneLineXML = true;
+
+		[Tooltip( "When an asset or scene object's path is calculated, its path relative to the Object that the copy operation was performed on will also be calculated. During a paste operation, this path will be used first for smart paste operations (e.g. imagine objects A and B having children named C. When a variable on A is copied and that variable points to A.C, after pasting that variable to B, the value will be resolved to B.C instead of A.C)" )]
+		public bool UseRelativePathsInXML = false;
+
+		[Space]
+		[Tooltip( "While inspecting a folder, selecting files/folders inside that folder will update Unity's selection, as well" )]
 		public bool SyncProjectWindowSelection = true;
 		[Tooltip( "Selecting an object in Favorites or History will highlight the object in Hierarchy/Project" )]
 		public bool AutomaticallyPingSelectedObject = true;
