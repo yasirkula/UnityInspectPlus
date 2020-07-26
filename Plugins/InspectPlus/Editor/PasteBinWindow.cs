@@ -14,7 +14,6 @@ namespace InspectPlusNamespace
 		private const int CLIPBOARD_CAPACITY = 30;
 
 		private static readonly Color activeClipboardColor = new Color32( 245, 170, 10, 255 );
-		private static readonly GUILayoutOption expandWidth = GUILayout.ExpandWidth( true );
 
 		private static readonly List<object> clipboard = new List<object>( 4 );
 		private static readonly List<GUIContent> clipboardLabels = new List<GUIContent>( 4 );

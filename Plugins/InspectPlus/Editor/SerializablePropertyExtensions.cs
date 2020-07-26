@@ -763,7 +763,7 @@ namespace InspectPlusNamespace
 					if( i < path.Length - 1 )
 						setValues[i + 1] = GetFieldValue( setValues[i], pathElement, arrayElementIndex );
 					else
-						SetFieldValue( setValues[i], pathElement, arrayElementIndex, value );
+						SetFieldValue( setValues[i], variableName, arrayElementIndex, value );
 				}
 			}
 
@@ -780,7 +780,7 @@ namespace InspectPlusNamespace
 
 					int arrayEndIndex = pathElement.IndexOf( ']', arrayStartIndex + 1 );
 					int arrayElementIndex = int.Parse( pathElement.Substring( arrayStartIndex + 1, arrayEndIndex - arrayStartIndex - 1 ) );
-					SetFieldValue( setValues[i], pathElement, arrayElementIndex, setValues[i + 1] );
+					SetFieldValue( setValues[i], variableName, arrayElementIndex, setValues[i + 1] );
 				}
 			}
 		}

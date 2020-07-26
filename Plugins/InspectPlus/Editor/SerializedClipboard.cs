@@ -300,20 +300,18 @@ namespace InspectPlusNamespace
 			public NestedReference[] NestedSceneObjects;
 			public NestedReference[] NestedAssets;
 
-			// Cached value that is valid until domain reload for quick copy/paste operations
-			private ManagedObjectClipboard cachedValue;
-			private Object cachedValueSource;
-
-			private bool objectRecreated;
-			private ManagedObjectClipboard m_object;
+			// Each different UnityEngine.Object context will receive a different copy of this managed object. If the same object was used,
+			// altering the managed object's nested assets/scene objects due to RelativePath would affect the previous contexts that this
+			// managed object was assigned to, as well
+			private readonly Dictionary<Object, ManagedObjectClipboard> valuesPerContext = new Dictionary<Object, ManagedObjectClipboard>( 2 );
 
 			public IPManagedObject( SerializedClipboard root ) : base( root ) { }
 			public IPManagedObject( SerializedClipboard root, ManagedObjectClipboard clipboard, Object source ) : base( root, null, clipboard.value.GetType() )
 			{
 				Value = EditorJsonUtility.ToJson( clipboard.value );
 
-				cachedValue = clipboard;
-				cachedValueSource = source;
+				if( source )
+					valuesPerContext[source] = clipboard;
 
 				ManagedObjectClipboard.NestedManagedObject[] nestedManagedObjects = clipboard.nestedManagedObjects;
 				if( nestedManagedObjects != null && nestedManagedObjects.Length > 0 )
@@ -398,44 +396,44 @@ namespace InspectPlusNamespace
 
 			public override object GetClipboardObject( Object context )
 			{
-				// Don't recreate the object as long as the original cached value is still alive and we are pasting to the same object that
-				// we copied the value from. This is important because on other objects, we want to evaluate RelativePath on nested scene objects
-				// and assets
-				if( cachedValue != null && context == cachedValueSource )
-					return cachedValue;
+				// Initialize serializedType
+				base.GetClipboardObject( context );
 
-				// We want to return the same value everytime, not copies of it
-				if( !objectRecreated )
+				if( !context )
 				{
-					objectRecreated = true;
-
-					// Initialize serializedType
-					base.GetClipboardObject( context );
-
-					if( serializedType.Type != null )
-					{
-						object value;
-						if( serializedType.Type.GetConstructor( BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null ) != null )
-							value = Activator.CreateInstance( serializedType.Type, true );
-						else
-							value = FormatterServices.GetUninitializedObject( serializedType.Type );
-
-						EditorJsonUtility.FromJsonOverwrite( Value, value );
-
-						// No need to fill the nestedManagedObjects and nestedUnityObjects arrays, they aren't used by SerializablePropertyExtensions
-						m_object = new ManagedObjectClipboard( serializedType.Name, value, null, null );
-
-						// We've assigned m_object its value before filling in the nested managed objects because a nested managed object can also reference
-						// this managed object (cyclic reference) and in which case, we want our m_object value to be ready
-						ApplyNestedReferencesToValue( value, NestedManagedObjects, root.ManagedObjects, context );
-					}
+					Debug.LogError( "Empty context encountered while deserializing managed object, please report it to Inspect+'s author." );
+					return null;
 				}
 
-				// Always evaluate nested scene objects' and assets' RelativePaths
-				ApplyNestedReferencesToValue( m_object.value, NestedSceneObjects, root.SceneObjects, context );
-				ApplyNestedReferencesToValue( m_object.value, NestedAssets, root.Assets, context );
+				ManagedObjectClipboard cachedResult;
+				if( valuesPerContext.TryGetValue( context, out cachedResult ) )
+					return cachedResult;
 
-				return m_object;
+				if( serializedType.Type != null )
+				{
+					object value;
+					if( serializedType.Type.GetConstructor( BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null ) != null )
+						value = Activator.CreateInstance( serializedType.Type, true );
+					else
+						value = FormatterServices.GetUninitializedObject( serializedType.Type );
+
+					EditorJsonUtility.FromJsonOverwrite( Value, value );
+
+					// No need to fill the nestedManagedObjects and nestedUnityObjects arrays, they aren't used by SerializablePropertyExtensions
+					cachedResult = new ManagedObjectClipboard( serializedType.Name, value, null, null );
+
+					// Avoiding StackOverflowException if cyclic nested references exist
+					valuesPerContext[context] = cachedResult;
+
+					// We've assigned cachedResult its value before filling in the nested managed objects because a nested managed object can also reference
+					// this managed object (cyclic reference) and in which case, we want our cachedResult value to be ready
+					ApplyNestedReferencesToValue( value, NestedManagedObjects, root.ManagedObjects, context );
+					ApplyNestedReferencesToValue( value, NestedSceneObjects, root.SceneObjects, context );
+					ApplyNestedReferencesToValue( value, NestedAssets, root.Assets, context );
+				}
+
+				valuesPerContext[context] = cachedResult;
+				return cachedResult;
 			}
 
 			public override void WriteToXmlElement( XmlElement element )
