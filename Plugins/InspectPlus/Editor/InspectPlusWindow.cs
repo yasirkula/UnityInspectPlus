@@ -570,10 +570,8 @@ namespace InspectPlusNamespace
 				if( ( (SerializedClipboard) clipboard ).Values.Length <= 1 )
 					return false;
 
-				SerializedClipboardUnityObject serializedObject = ( (SerializedClipboard) clipboard ).Values[0] as SerializedClipboardUnityObject;
-				bool isSerializedObjectMaterial = serializedObject != null && serializedObject.TypeIndex == 0 && ( (SerializedClipboard) clipboard ).Types[0].Name == "Material";
-
 				// Allow pasting materials to materials only
+				bool isSerializedObjectMaterial = ( (SerializedClipboard) clipboard ).Values[0].GetClipboardObject( command.context ) as Material;
 				return isSerializedObjectMaterial == ( command.context is Material );
 			}
 
