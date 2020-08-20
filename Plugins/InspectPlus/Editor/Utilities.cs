@@ -54,8 +54,8 @@ namespace InspectPlusNamespace
 					if( typeof( Type ).IsAssignableFrom( variableType ) || variableType.Namespace == reflectionNameSpace )
 						continue;
 
-					// Pointer variables can throw ArgumentException
-					if( variableType.IsPointer )
+					// Pointers and ref variables can throw ArgumentException
+					if( variableType.IsPointer || variableType.IsByRef )
 						continue;
 
 					VariableGetVal getter = field.CreateGetter();
@@ -79,8 +79,8 @@ namespace InspectPlusNamespace
 					if( typeof( Type ).IsAssignableFrom( variableType ) || variableType.Namespace == reflectionNameSpace )
 						continue;
 
-					// Pointer variables can throw ArgumentException
-					if( variableType.IsPointer )
+					// Pointers and ref variables can throw ArgumentException
+					if( variableType.IsPointer || variableType.IsByRef )
 						continue;
 
 					// Skip properties without a getter function
