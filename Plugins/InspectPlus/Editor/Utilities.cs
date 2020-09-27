@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
 namespace InspectPlusNamespace
@@ -30,6 +32,33 @@ namespace InspectPlusNamespace
 		private static readonly Dictionary<Type, VariableGetterHolder[]> typeToVariables = new Dictionary<Type, VariableGetterHolder[]>( 1024 );
 		private static readonly string reflectionNameSpace = typeof( Assembly ).Namespace;
 		public static readonly StringBuilder stringBuilder = new StringBuilder( 256 );
+
+		public static string GetDetailedObjectName( Object obj )
+		{
+			if( !obj )
+				return "<null>";
+
+			if( obj is GameObject )
+			{
+				Scene scene = ( (GameObject) obj ).scene;
+				return scene.IsValid() ? string.Concat( scene.name, "/", obj.name ) : ( obj.name + " Asset" );
+			}
+			else if( obj is Component )
+			{
+				Scene scene = ( (Component) obj ).gameObject.scene;
+				return scene.IsValid() ? string.Concat( scene.name, "/", obj.name, ".", obj.GetType().Name ) : string.Concat( obj.name, " Asset.", obj.GetType().Name );
+			}
+			else if( AssetDatabase.Contains( obj ) )
+				return obj.name + " Asset";
+			else
+			{
+				string scenePath = AssetDatabase.GetAssetOrScenePath( obj );
+				if( !string.IsNullOrEmpty( scenePath ) )
+					return string.Concat( AssetDatabase.GetAssetOrScenePath( obj ), "/", obj.name, " ", obj.GetType().Name );
+				else
+					return string.Concat( obj.name, " ", obj.GetType().Name );
+			}
+		}
 
 		// Get filtered variables for a type
 		public static VariableGetterHolder[] GetFilteredVariablesForType( Type type )

@@ -10,8 +10,6 @@ using UnityEditor.Experimental.AssetImporters;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
-using SerializedClipboardElement = InspectPlusNamespace.SerializedClipboard.IPObject;
-using SerializedClipboardUnityObject = InspectPlusNamespace.SerializedClipboard.IPUnityObject;
 
 namespace InspectPlusNamespace
 {
@@ -29,6 +27,8 @@ namespace InspectPlusNamespace
 		private const string NEW_WINDOW_LABEL = "Open In New Window";
 		private const string CONTEXT_COPY_LABEL = "Copy (Inspect+)";
 		private const string CONTEXT_PASTE_LABEL = "Paste (Inspect+)";
+		private const string CONTEXT_PASTE_VALUES_LABEL = "Paste Values (Inspect+)";
+		private const string CONTEXT_PASTE_FROM_BIN_LABEL = "Paste From Bin (Inspect+)";
 
 		private const float BUTTON_DRAG_THRESHOLD_SQR = 600f;
 		private const float HORIZONTAL_SCROLL_SPEED = 10f;
@@ -71,6 +71,8 @@ namespace InspectPlusNamespace
 		private static GUIContent favoritesIcon, historyIcon;
 		private static GUIContent favoritesIconNoTooltip, historyIconNoTooltip;
 		private static Rect lastWindowPosition;
+
+		private static List<Object> objectsToOpenPasteBinWith;
 
 		// These are not readonly to support serialization of the data
 		// SerializeField makes history data persist between editor sessions (unfortunately, only assets persist, not scene objects)
@@ -445,142 +447,79 @@ namespace InspectPlusNamespace
 		{
 			// Passing null as context parameter because we don't want to calculate a "./" RelativePath for this clipboard in XML mode
 			if( command.context )
-				PasteBinWindow.AddToClipboard( command.context, "CONTEXT", null );
+				PasteBinWindow.AddToClipboard( command.context, Utilities.GetDetailedObjectName( command.context ), null );
 			else
-				PasteBinWindow.AddToClipboard( Selection.activeObject, "CONTEXT", null );
+				PasteBinWindow.AddToClipboard( Selection.activeObject, Utilities.GetDetailedObjectName( Selection.activeObject ), null );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_LABEL, priority = 1450 )]
-		private static void ContextMenuItemCopyComponent( MenuCommand command )
-		{
-			if( command.context )
-				PasteBinWindow.AddToClipboard( command.context, "CONTEXT", command.context );
-			else
-				PasteBinWindow.AddToClipboard( Selection.activeObject, "CONTEXT", Selection.activeObject );
-		}
-
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_VALUES_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_LABEL, priority = 1450 )]
 		private static void ContextMenuItemPasteObject( MenuCommand command )
 		{
-			object clipboard = PasteBinWindow.ActiveClipboard;
-			Object source = clipboard as Object;
-			Object target = command.context;
-			if( !( clipboard is SerializedClipboard ) && ( !source || source == target ) )
-				return;
+			if( PasteBinWindow.ActiveClipboard != null )
+				PasteBinWindow.ActiveClipboard.PasteToObject( command.context );
+		}
 
-			if( source && source.GetType() == target.GetType() )
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_FROM_BIN_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_FROM_BIN_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_FROM_BIN_LABEL, priority = 1450 )]
+		private static void ContextMenuItemPasteObjectFromBin( MenuCommand command )
+		{
+			// This happens when this button is clicked while multiple Objects were selected. In this case,
+			// this function will be called once for each selected Object. We don't want to open a separate
+			// paste bin window for each selected Object. Instead, show a single paste bin window that will
+			// paste to all of the selected Objects. We aren't using Selection.objects because for components,
+			// it will return the GameObject instead
+			if( command.context )
 			{
-				Undo.RecordObject( target, "Paste Values" );
-				EditorUtility.CopySerialized( source, target );
-			}
-			else
-			{
-				// Perform a name-wise paste
-				Dictionary<string, SerializedProperty> sourceProperties = null;
-				Dictionary<string, SerializedClipboardElement> sourcePropertiesSerialized = null;
-				if( ( clipboard is SerializedClipboard ) )
-				{
-					sourcePropertiesSerialized = new Dictionary<string, SerializedClipboardElement>( 32 );
-					SerializedClipboardElement[] propertiesSerialized = ( (SerializedClipboard) clipboard ).Values;
-					for( int i = 1; i < propertiesSerialized.Length; i++ )
-					{
-						if( !string.IsNullOrEmpty( propertiesSerialized[i].Name ) )
-							sourcePropertiesSerialized[propertiesSerialized[i].Name] = propertiesSerialized[i];
-					}
-				}
+				if( objectsToOpenPasteBinWith == null )
+					objectsToOpenPasteBinWith = new List<Object>( 2 ) { command.context };
 				else
-				{
-					sourceProperties = new Dictionary<string, SerializedProperty>( 32 );
-					foreach( SerializedProperty property in new SerializedObject( source ).EnumerateDirectChildren() )
-					{
-						if( property.name != "m_Script" )
-							sourceProperties[property.name] = property.Copy();
-					}
-				}
+					objectsToOpenPasteBinWith.Add( command.context );
 
-				System.Text.StringBuilder sb = Utilities.stringBuilder;
-				sb.Length = 0;
-				sb.AppendLine( "Pasted variable(s):" );
-
-				int pastes = 0;
-				SerializedObject targetSerializedObject = new SerializedObject( target );
-				foreach( SerializedProperty property in targetSerializedObject.EnumerateDirectChildren() )
-				{
-					if( property.name == "m_Script" )
-						continue;
-
-					bool foundMatchingProperty = false;
-					object _clipboard = null;
-					if( sourceProperties != null )
-					{
-						SerializedProperty matchingProperty;
-						if( sourceProperties.TryGetValue( property.name, out matchingProperty ) )
-						{
-							_clipboard = matchingProperty.CopyValue();
-							foundMatchingProperty = true;
-						}
-					}
-					else
-					{
-						SerializedClipboardElement matchingProperty;
-						if( sourcePropertiesSerialized.TryGetValue( property.name, out matchingProperty ) )
-						{
-							_clipboard = matchingProperty.GetClipboardObject( target );
-							foundMatchingProperty = true;
-						}
-					}
-
-					if( foundMatchingProperty && property.CanPasteValue( _clipboard, true ) )
-					{
-						property.PasteValue( _clipboard );
-
-						sb.Append( "- " ).AppendLine( property.name );
-						pastes++;
-					}
-				}
-
-				if( pastes > 0 )
-				{
-					targetSerializedObject.ApplyModifiedProperties();
-					Debug.Log( sb.ToString() );
-				}
+				EditorApplication.update -= CallPasteObjectFromBinOnce;
+				EditorApplication.update += CallPasteObjectFromBinOnce;
+			}
+			else if( objectsToOpenPasteBinWith != null )
+			{
+				PasteValueFromBin( objectsToOpenPasteBinWith.ToArray() );
+				objectsToOpenPasteBinWith = null;
 			}
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_LABEL, validate = true )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_LABEL, validate = true )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_LABEL, validate = true )]
+		private static void CallPasteObjectFromBinOnce()
+		{
+			EditorApplication.update -= CallPasteObjectFromBinOnce;
+			ContextMenuItemPasteObjectFromBin( new MenuCommand( null ) );
+		}
+
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
 		private static bool ContextMenuItemPasteObjectValidate( MenuCommand command )
 		{
 			if( !command.context )
 			{
-				Debug.LogError( "Empty context, please report it to Inspect+'s author." );
+				Debug.LogError( "Encountered empty context, probably a missing script." );
 				return false;
 			}
 
-			if( ( command.context.hideFlags & HideFlags.NotEditable ) == HideFlags.NotEditable )
-				return false;
+			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteToObject( command.context );
+		}
 
-			object clipboard = PasteBinWindow.ActiveClipboard;
-			if( clipboard is SerializedClipboard )
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_FROM_BIN_LABEL, validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_FROM_BIN_LABEL, validate = true )]
+		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_FROM_BIN_LABEL, validate = true )]
+		private static bool ContextMenuItemPasteObjectFromBinValidate( MenuCommand command )
+		{
+			if( !command.context )
 			{
-				// Clipboard must contain the serialized Object's fields, as well
-				if( ( (SerializedClipboard) clipboard ).Values.Length <= 1 )
-					return false;
-
-				// Allow pasting materials to materials only
-				bool isSerializedObjectMaterial = ( (SerializedClipboard) clipboard ).Values[0].GetClipboardObject( command.context ) as Material;
-				return isSerializedObjectMaterial == ( command.context is Material );
+				Debug.LogError( "Encountered empty context, probably a missing script." );
+				return false;
 			}
 
-			Object clipboardObject = clipboard as Object;
-			if( !clipboardObject || clipboardObject == command.context )
-				return false;
-
-			// Allow pasting materials to materials only
-			return ( clipboardObject is Material ) == ( command.context is Material );
+			return true;
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, validate = true )]
@@ -644,7 +583,10 @@ namespace InspectPlusNamespace
 				}
 
 				for( int i = 0; i < targets.Length; i++ )
-					AddInspectButtonToMenu( menu, targets[i], "/" + targets[i].name );
+				{
+					if( targets[i] )
+						AddInspectButtonToMenu( menu, targets[i], "/" + targets[i].name );
+				}
 
 				menu.AddSeparator( "" );
 			}
@@ -659,10 +601,12 @@ namespace InspectPlusNamespace
 			else
 				menu.AddDisabledItem( new GUIContent( CONTEXT_COPY_LABEL ) );
 
-			if( !property.CanPasteValue( PasteBinWindow.ActiveClipboard, false ) )
+			if( PasteBinWindow.ActiveClipboard == null || !property.CanPasteValue( PasteBinWindow.ActiveClipboard.RootValue, false ) )
 				menu.AddDisabledItem( new GUIContent( CONTEXT_PASTE_LABEL ) );
 			else
 				menu.AddItem( new GUIContent( CONTEXT_PASTE_LABEL ), false, PasteValue, property.Copy() );
+
+			menu.AddItem( new GUIContent( CONTEXT_PASTE_FROM_BIN_LABEL ), false, PasteValueFromBin, property.Copy() );
 		}
 
 		public static void OnObjectRightClicked( GenericMenu menu, Object obj )
@@ -1953,7 +1897,25 @@ namespace InspectPlusNamespace
 
 		private static void PasteValue( object obj )
 		{
-			( (SerializedProperty) obj ).PasteValue( PasteBinWindow.ActiveClipboard );
+			if( PasteBinWindow.ActiveClipboard != null )
+				( (SerializedProperty) obj ).PasteValue( PasteBinWindow.ActiveClipboard.RootValue );
+		}
+
+		private static void PasteValueFromBin( object obj )
+		{
+			if( obj is SerializedProperty || obj is Object[] )
+			{
+				PasteBinContextWindow window = CreateInstance<PasteBinContextWindow>();
+				if( obj is SerializedProperty )
+					window.Initialize( (SerializedProperty) obj );
+				else
+					window.Initialize( (Object[]) obj );
+
+				window.position = new Rect( new Vector2( -9999f, -9999f ), new Vector2( window.PreferredWidth, 9999f ) );
+				window.ShowPopup();
+			}
+			else
+				Debug.LogError( "Passed parameter is neither a SerializedProperty nor an Object." );
 		}
 
 		private static Object PreferablyGameObject( Object obj )

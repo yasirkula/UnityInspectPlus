@@ -68,14 +68,8 @@ namespace InspectPlusNamespace
 		public float DebugModeRefreshInterval = 0.5f;
 
 		[Space]
-		[Tooltip( "When an Object's value is copied with Inspect+, copied data will be stored in system clipboard in XML format. It is slower (may not be noticeable) but the data can be pasted to other Unity projects or to a text editor like Notepad" )]
-		public bool UseXMLCopyFormat = true;
-
-		[Tooltip( "Determines whether the XML data will be compact (single line) or human-readable (multiple lines)" )]
-		public bool OneLineXML = true;
-
 		[Tooltip( "When an asset or scene object's path is calculated, its path relative to the Object that the copy operation was performed on will also be calculated. During a paste operation, this path will be used first for smart paste operations (e.g. imagine objects A and B having children named C. When a variable on A is copied and that variable points to A.C, after pasting that variable to B, the value will be resolved to B.C instead of A.C)" )]
-		public bool UseRelativePathsInXML = false;
+		public bool SmartCopyPaste = false;
 
 		[Space]
 		[Tooltip( "While inspecting a folder, selecting files/folders inside that folder will update Unity's selection, as well" )]

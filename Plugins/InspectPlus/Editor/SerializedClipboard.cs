@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
-using System.Xml;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -19,6 +18,18 @@ namespace InspectPlusNamespace
 	public class SerializedClipboard
 	{
 		#region Serialized Types
+		public enum IPObjectType
+		{
+			Null = 0, Type = 1,
+			Asset = 2, AssetReference = 3,
+			SceneObject = 4, SceneObjectReference = 5,
+			ManagedObject = 6, ManagedReference = 7,
+			Array = 8, GenericObject = 9,
+			Vector = 10, Color = 11,
+			Long = 12, Double = 13, String = 14,
+			AnimationCurve = 15, Gradient = 16
+		};
+
 		public abstract class IPObject
 		{
 			public string Name;
@@ -37,82 +48,14 @@ namespace InspectPlusNamespace
 
 			public abstract object GetClipboardObject( Object context );
 
-			public virtual void WriteToXmlElement( XmlElement element )
+			public virtual void Serialize( BinaryWriter writer )
 			{
-				AppendXmlAttribute( element, "Name", Name );
+				SerializeString( writer, Name );
 			}
 
-			public virtual void ReadFromXmlElement( XmlElement element )
+			public virtual void Deserialize( BinaryReader reader )
 			{
-				Name = ReadXmlAttributeAsString( element, "Name" );
-			}
-
-			protected void AppendXmlAttribute( XmlElement element, string name, string value )
-			{
-				if( value == null )
-					return;
-
-				XmlAttribute result = element.OwnerDocument.CreateAttribute( name );
-				result.Value = value;
-				element.Attributes.Append( result );
-			}
-
-			protected void AppendXmlAttribute( XmlElement element, string name, int value )
-			{
-				XmlAttribute result = element.OwnerDocument.CreateAttribute( name );
-				result.Value = value.ToString( CultureInfo.InvariantCulture );
-				element.Attributes.Append( result );
-			}
-
-			protected void AppendXmlAttribute( XmlElement element, string name, long value )
-			{
-				XmlAttribute result = element.OwnerDocument.CreateAttribute( name );
-				result.Value = value.ToString( CultureInfo.InvariantCulture );
-				element.Attributes.Append( result );
-			}
-
-			protected void AppendXmlAttribute( XmlElement element, string name, float value )
-			{
-				XmlAttribute result = element.OwnerDocument.CreateAttribute( name );
-				result.Value = value.ToString( CultureInfo.InvariantCulture );
-				element.Attributes.Append( result );
-			}
-
-			protected void AppendXmlAttribute( XmlElement element, string name, double value )
-			{
-				XmlAttribute result = element.OwnerDocument.CreateAttribute( name );
-				result.Value = value.ToString( CultureInfo.InvariantCulture );
-				element.Attributes.Append( result );
-			}
-
-			protected string ReadXmlAttributeAsString( XmlElement element, string name )
-			{
-				XmlAttribute attribute = element.Attributes[name];
-				return attribute != null ? attribute.Value : null;
-			}
-
-			protected int ReadXmlAttributeAsInteger( XmlElement element, string name )
-			{
-				XmlAttribute attribute = element.Attributes[name];
-				return attribute != null ? int.Parse( attribute.Value, CultureInfo.InvariantCulture ) : 0;
-			}
-
-			protected long ReadXmlAttributeAsLong( XmlElement element, string name )
-			{
-				XmlAttribute attribute = element.Attributes[name];
-				return attribute != null ? long.Parse( attribute.Value, CultureInfo.InvariantCulture ) : 0L;
-			}
-
-			protected float ReadXmlAttributeAsFloat( XmlElement element, string name )
-			{
-				XmlAttribute attribute = element.Attributes[name];
-				return attribute != null ? float.Parse( attribute.Value, CultureInfo.InvariantCulture ) : 0f;
-			}
-
-			protected double ReadXmlAttributeAsDouble( XmlElement element, string name )
-			{
-				XmlAttribute attribute = element.Attributes[name];
-				return attribute != null ? double.Parse( attribute.Value, CultureInfo.InvariantCulture ) : 0.0;
+				Name = DeserializeString( reader );
 			}
 		}
 
@@ -150,16 +93,16 @@ namespace InspectPlusNamespace
 				return m_type;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "FullName", AssemblyQualifiedName );
+				base.Serialize( writer );
+				SerializeString( writer, AssemblyQualifiedName );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				AssemblyQualifiedName = ReadXmlAttributeAsString( element, "FullName" );
+				base.Deserialize( reader );
+				AssemblyQualifiedName = DeserializeString( reader );
 			}
 		}
 
@@ -170,16 +113,16 @@ namespace InspectPlusNamespace
 			protected IPObjectWithChild( SerializedClipboard root ) : base( root ) { }
 			protected IPObjectWithChild( SerializedClipboard root, string name ) : base( root, name ) { }
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				root.CreateObjectArrayInXmlElement( element, Children );
+				base.Serialize( writer );
+				root.SerializeArray( writer, Children );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Children = root.ReadObjectArrayFromXmlElement<IPObject>( element );
+				base.Deserialize( reader );
+				Children = root.DeserializeArray<IPObject>( reader );
 			}
 		}
 
@@ -200,16 +143,16 @@ namespace InspectPlusNamespace
 				return null;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "TypeIndex", TypeIndex );
+				base.Serialize( writer );
+				writer.Write( TypeIndex );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				TypeIndex = ReadXmlAttributeAsInteger( element, "TypeIndex" );
+				base.Deserialize( reader );
+				TypeIndex = reader.ReadInt32();
 			}
 		}
 
@@ -224,7 +167,7 @@ namespace InspectPlusNamespace
 				Children = new IPObject[value.elements.Length];
 
 				for( int i = 0; i < value.elements.Length; i++ )
-					Children[i] = root.GetSerializableDataFromClipboardData( value.elements[i], null, source );
+					Children[i] = root.ConvertClipboardObjectToIPObject( value.elements[i], null, source );
 			}
 
 			public override object GetClipboardObject( Object context )
@@ -236,16 +179,16 @@ namespace InspectPlusNamespace
 				return new ArrayClipboard( ElementType, elements );
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "ElementType", ElementType );
+				base.Serialize( writer );
+				SerializeString( writer, ElementType );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				ElementType = ReadXmlAttributeAsString( element, "ElementType" );
+				base.Deserialize( reader );
+				ElementType = DeserializeString( reader );
 			}
 		}
 
@@ -260,7 +203,7 @@ namespace InspectPlusNamespace
 				Children = new IPObject[value.values.Length];
 
 				for( int i = 0; i < value.values.Length; i++ )
-					Children[i] = root.GetSerializableDataFromClipboardData( value.values[i], null, source );
+					Children[i] = root.ConvertClipboardObjectToIPObject( value.values[i], null, source );
 			}
 
 			public override object GetClipboardObject( Object context )
@@ -272,16 +215,16 @@ namespace InspectPlusNamespace
 				return new GenericObjectClipboard( Type, values );
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Type", Type );
+				base.Serialize( writer );
+				SerializeString( writer, Type );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Type = ReadXmlAttributeAsString( element, "Type" );
+				base.Deserialize( reader );
+				Type = DeserializeString( reader );
 			}
 		}
 
@@ -436,69 +379,55 @@ namespace InspectPlusNamespace
 				return cachedResult;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
 
-				WriteNestedReferencesToChildXmlElement( element, NestedManagedObjects, "NestedManagedObjects" );
-				WriteNestedReferencesToChildXmlElement( element, NestedSceneObjects, "NestedSceneObjects" );
-				WriteNestedReferencesToChildXmlElement( element, NestedAssets, "NestedAssets" );
+				SerializeString( writer, Value );
+				SerializeNestedReferences( writer, NestedManagedObjects );
+				SerializeNestedReferences( writer, NestedSceneObjects );
+				SerializeNestedReferences( writer, NestedAssets );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsString( element, "Value" );
+				base.Deserialize( reader );
 
-				XmlNodeList childNodes = element.ChildNodes;
-				if( childNodes != null )
-				{
-					for( int i = 0; i < childNodes.Count; i++ )
-					{
-						XmlElement childNode = (XmlElement) childNodes[i];
-
-						if( childNode.Name == "NestedManagedObjects" )
-							NestedManagedObjects = ReadNestedReferencesFromXmlElement( childNode );
-						else if( childNode.Name == "NestedSceneObjects" )
-							NestedSceneObjects = ReadNestedReferencesFromXmlElement( childNode );
-						else if( childNode.Name == "NestedAssets" )
-							NestedAssets = ReadNestedReferencesFromXmlElement( childNode );
-					}
-				}
+				Value = DeserializeString( reader );
+				NestedManagedObjects = DeserializeNestedReferences( reader );
+				NestedSceneObjects = DeserializeNestedReferences( reader );
+				NestedAssets = DeserializeNestedReferences( reader );
 			}
 
-			private void WriteNestedReferencesToChildXmlElement( XmlElement element, NestedReference[] references, string childElementName )
+			private void SerializeNestedReferences( BinaryWriter writer, NestedReference[] references )
 			{
-				if( references != null && references.Length > 0 )
+				if( references == null || references.Length == 0 )
+					writer.Write( 0 );
+				else
 				{
-					XmlElement arrayRoot = element.OwnerDocument.CreateElement( childElementName );
-					element.AppendChild( arrayRoot );
+					writer.Write( references.Length );
 
 					for( int i = 0; i < references.Length; i++ )
 					{
-						XmlElement childElement = arrayRoot.OwnerDocument.CreateElement( "Reference" );
-						AppendXmlAttribute( childElement, "RelativePath", references[i].RelativePath );
-						AppendXmlAttribute( childElement, "ManagedRefIndex", references[i].ReferenceIndex );
-						arrayRoot.AppendChild( childElement );
+						SerializeString( writer, references[i].RelativePath );
+						writer.Write( references[i].ReferenceIndex );
 					}
 				}
 			}
 
-			private NestedReference[] ReadNestedReferencesFromXmlElement( XmlElement element )
+			private NestedReference[] DeserializeNestedReferences( BinaryReader reader )
 			{
-				XmlNodeList childNodes = element.ChildNodes;
-				if( childNodes == null || childNodes.Count == 0 )
+				int arraySize = reader.ReadInt32();
+				if( arraySize == 0 )
 					return null;
 
-				NestedReference[] result = new NestedReference[childNodes.Count];
-				for( int i = 0; i < childNodes.Count; i++ )
+				NestedReference[] result = new NestedReference[arraySize];
+				for( int i = 0; i < arraySize; i++ )
 				{
-					XmlElement childNode = (XmlElement) childNodes[i];
 					result[i] = new NestedReference()
 					{
-						RelativePath = ReadXmlAttributeAsString( childNode, "RelativePath" ),
-						ReferenceIndex = ReadXmlAttributeAsInteger( childNode, "ManagedRefIndex" )
+						RelativePath = DeserializeString( reader ),
+						ReferenceIndex = reader.ReadInt32()
 					};
 				}
 
@@ -537,16 +466,16 @@ namespace InspectPlusNamespace
 				return root.ManagedObjects[ManagedRefIndex].GetClipboardObject( context );
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "ManagedRefIndex", ManagedRefIndex );
+				base.Serialize( writer );
+				writer.Write( ManagedRefIndex );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				ManagedRefIndex = ReadXmlAttributeAsInteger( element, "ManagedRefIndex" );
+				base.Deserialize( reader );
+				ManagedRefIndex = reader.ReadInt32();
 			}
 		}
 
@@ -567,25 +496,25 @@ namespace InspectPlusNamespace
 				return ResolveRelativePath( context, RelativePath, serializedType );
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "ObjectName", ObjectName );
-				AppendXmlAttribute( element, "Path", Path );
-				AppendXmlAttribute( element, "RelativePath", RelativePath );
+				base.Serialize( writer );
+				SerializeString( writer, ObjectName );
+				SerializeString( writer, Path );
+				SerializeString( writer, RelativePath );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				ObjectName = ReadXmlAttributeAsString( element, "ObjectName" );
-				Path = ReadXmlAttributeAsString( element, "Path" );
-				RelativePath = ReadXmlAttributeAsString( element, "RelativePath" );
+				base.Deserialize( reader );
+				ObjectName = DeserializeString( reader );
+				Path = DeserializeString( reader );
+				RelativePath = DeserializeString( reader );
 			}
 
 			protected string CalculateRelativePath( Object source, Object context, string targetPath = null )
 			{
-				if( !InspectPlusSettings.Instance.UseRelativePathsInXML )
+				if( !InspectPlusSettings.Instance.SmartCopyPaste )
 					return null;
 
 				if( !source || !context || ( !( source is Component ) && !( source is GameObject ) ) || ( !( context is Component ) && !( context is GameObject ) ) )
@@ -647,7 +576,7 @@ namespace InspectPlusNamespace
 
 			protected Object ResolveRelativePath( Object source, string relativePath, IPType targetType )
 			{
-				if( !InspectPlusSettings.Instance.UseRelativePathsInXML )
+				if( !InspectPlusSettings.Instance.SmartCopyPaste )
 					return null;
 
 				if( string.IsNullOrEmpty( relativePath ) || !source || ( !( source is Component ) && !( source is GameObject ) ) )
@@ -736,9 +665,6 @@ namespace InspectPlusNamespace
 		{
 			public string SceneName;
 
-			private bool objectRecreated;
-			private Object m_object;
-
 			public IPSceneObject( SerializedClipboard root ) : base( root ) { }
 			public IPSceneObject( SerializedClipboard root, Object value, Object source ) : base( root, null, value.GetType() )
 			{
@@ -752,7 +678,7 @@ namespace InspectPlusNamespace
 					UnityEditor.Experimental.SceneManagement.PrefabStage openPrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
 					if( openPrefabStage == null || !openPrefabStage.IsPartOfPrefabContents( transform.gameObject ) )
 #endif
-						SceneName = transform.gameObject.scene.name;
+					SceneName = transform.gameObject.scene.name;
 
 					Path = CalculatePath( transform );
 					RelativePath = CalculateRelativePath( source, value, Path );
@@ -765,11 +691,6 @@ namespace InspectPlusNamespace
 				object baseResult = base.GetClipboardObject( context );
 				if( baseResult != null && !baseResult.Equals( null ) )
 					return baseResult;
-
-				if( objectRecreated )
-					return m_object;
-
-				objectRecreated = true;
 
 				if( !string.IsNullOrEmpty( Path ) )
 				{
@@ -784,10 +705,7 @@ namespace InspectPlusNamespace
 					{
 						Object result = FindObjectInScene( new GameObject[1] { openPrefabStage.prefabContentsRoot }, pathComponents );
 						if( result )
-						{
-							m_object = result;
 							return result;
-						}
 					}
 #endif
 
@@ -805,10 +723,7 @@ namespace InspectPlusNamespace
 					{
 						Object result = FindObjectInScene( scenes[originalSceneIndex].GetRootGameObjects(), pathComponents );
 						if( result )
-						{
-							m_object = result;
 							return result;
-						}
 					}
 
 					// If object isn't found, search other scenes
@@ -818,10 +733,7 @@ namespace InspectPlusNamespace
 						{
 							Object result = FindObjectInScene( scenes[i].GetRootGameObjects(), pathComponents );
 							if( result )
-							{
-								m_object = result;
 								return result;
-							}
 						}
 					}
 				}
@@ -834,10 +746,7 @@ namespace InspectPlusNamespace
 						for( int i = 0; i < objects.Length; i++ )
 						{
 							if( objects[i].name == ObjectName )
-							{
-								m_object = objects[i];
 								return objects[i];
-							}
 						}
 					}
 				}
@@ -845,16 +754,16 @@ namespace InspectPlusNamespace
 				return null;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "SceneName", SceneName );
+				base.Serialize( writer );
+				SerializeString( writer, SceneName );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				SceneName = ReadXmlAttributeAsString( element, "SceneName" );
+				base.Deserialize( reader );
+				SceneName = DeserializeString( reader );
 			}
 
 			private Object FindObjectInScene( GameObject[] sceneRoot, string[] pathComponents )
@@ -957,16 +866,16 @@ namespace InspectPlusNamespace
 				return null;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
+				SerializeString( writer, Value );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsString( element, "Value" );
+				base.Deserialize( reader );
+				Value = DeserializeString( reader );
 			}
 
 			private Object FindAssetAtPath( string path )
@@ -1007,16 +916,16 @@ namespace InspectPlusNamespace
 				return root.SceneObjects[SceneObjectIndex].GetClipboardObject( context );
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "SceneObjectIndex", SceneObjectIndex );
+				base.Serialize( writer );
+				writer.Write( SceneObjectIndex );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				SceneObjectIndex = ReadXmlAttributeAsInteger( element, "SceneObjectIndex" );
+				base.Deserialize( reader );
+				SceneObjectIndex = reader.ReadInt32();
 			}
 		}
 
@@ -1035,16 +944,16 @@ namespace InspectPlusNamespace
 				return root.Assets[AssetIndex].GetClipboardObject( context );
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "AssetIndex", AssetIndex );
+				base.Serialize( writer );
+				writer.Write( AssetIndex );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				AssetIndex = ReadXmlAttributeAsInteger( element, "AssetIndex" );
+				base.Deserialize( reader );
+				AssetIndex = reader.ReadInt32();
 			}
 		}
 
@@ -1070,39 +979,67 @@ namespace InspectPlusNamespace
 
 			public override object GetClipboardObject( Object context ) { return new VectorClipboard( C1, C2, C3, C4, C5, C6 ); }
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
+				base.Serialize( writer );
 
-				AppendXmlAttribute( element, "C1", C1 );
-				AppendXmlAttribute( element, "C2", C2 );
-				AppendXmlAttribute( element, "C3", C3 );
-
-				if( C6 != 0f )
-				{
-					AppendXmlAttribute( element, "C4", C4 );
-					AppendXmlAttribute( element, "C5", C5 );
-					AppendXmlAttribute( element, "C6", C6 );
-				}
-				else if( C5 != 0f )
-				{
-					AppendXmlAttribute( element, "C4", C4 );
-					AppendXmlAttribute( element, "C5", C5 );
-				}
-				else if( C4 != 0f )
-					AppendXmlAttribute( element, "C4", C4 );
+				writer.Write( C1 );
+				writer.Write( C2 );
+				writer.Write( C3 );
+				writer.Write( C4 );
+				writer.Write( C5 );
+				writer.Write( C6 );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
+				base.Deserialize( reader );
 
-				C1 = ReadXmlAttributeAsFloat( element, "C1" );
-				C2 = ReadXmlAttributeAsFloat( element, "C2" );
-				C3 = ReadXmlAttributeAsFloat( element, "C3" );
-				C4 = ReadXmlAttributeAsFloat( element, "C4" );
-				C5 = ReadXmlAttributeAsFloat( element, "C5" );
-				C6 = ReadXmlAttributeAsFloat( element, "C6" );
+				C1 = reader.ReadSingle();
+				C2 = reader.ReadSingle();
+				C3 = reader.ReadSingle();
+				C4 = reader.ReadSingle();
+				C5 = reader.ReadSingle();
+				C6 = reader.ReadSingle();
+			}
+		}
+
+		public class IPColor : IPObject
+		{
+			public float R;
+			public float G;
+			public float B;
+			public float A;
+
+			public IPColor( SerializedClipboard root ) : base( root ) { }
+			public IPColor( SerializedClipboard root, string name, Color value ) : base( root, name )
+			{
+				R = value.r;
+				G = value.g;
+				B = value.b;
+				A = value.a;
+			}
+
+			public override object GetClipboardObject( Object context ) { return new Color( R, G, B, A ); }
+
+			public override void Serialize( BinaryWriter writer )
+			{
+				base.Serialize( writer );
+
+				writer.Write( R );
+				writer.Write( G );
+				writer.Write( B );
+				writer.Write( A );
+			}
+
+			public override void Deserialize( BinaryReader reader )
+			{
+				base.Deserialize( reader );
+
+				R = reader.ReadSingle();
+				G = reader.ReadSingle();
+				B = reader.ReadSingle();
+				A = reader.ReadSingle();
 			}
 		}
 
@@ -1118,16 +1055,16 @@ namespace InspectPlusNamespace
 
 			public override object GetClipboardObject( Object context ) { return Value; }
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
+				writer.Write( Value );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsLong( element, "Value" );
+				base.Deserialize( reader );
+				Value = reader.ReadInt64();
 			}
 		}
 
@@ -1143,16 +1080,16 @@ namespace InspectPlusNamespace
 
 			public override object GetClipboardObject( Object context ) { return Value; }
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
+				writer.Write( Value );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsDouble( element, "Value" );
+				base.Deserialize( reader );
+				Value = reader.ReadDouble();
 			}
 		}
 
@@ -1168,16 +1105,16 @@ namespace InspectPlusNamespace
 
 			public override object GetClipboardObject( Object context ) { return Value; }
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
+				SerializeString( writer, Value );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsString( element, "Value" );
+				base.Deserialize( reader );
+				Value = DeserializeString( reader );
 			}
 		}
 
@@ -1204,16 +1141,16 @@ namespace InspectPlusNamespace
 				return wrapper.value;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
+				SerializeString( writer, Value );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsString( element, "Value" );
+				base.Deserialize( reader );
+				Value = DeserializeString( reader );
 			}
 		}
 
@@ -1240,19 +1177,54 @@ namespace InspectPlusNamespace
 				return wrapper.value;
 			}
 
-			public override void WriteToXmlElement( XmlElement element )
+			public override void Serialize( BinaryWriter writer )
 			{
-				base.WriteToXmlElement( element );
-				AppendXmlAttribute( element, "Value", Value );
+				base.Serialize( writer );
+				SerializeString( writer, Value );
 			}
 
-			public override void ReadFromXmlElement( XmlElement element )
+			public override void Deserialize( BinaryReader reader )
 			{
-				base.ReadFromXmlElement( element );
-				Value = ReadXmlAttributeAsString( element, "Value" );
+				base.Deserialize( reader );
+				Value = DeserializeString( reader );
 			}
 		}
 		#endregion
+
+		private static readonly Dictionary<Type, IPObjectType> serializedTypeToEnumLookup = new Dictionary<Type, IPObjectType>()
+		{
+			{ typeof( IPNull ), IPObjectType.Null },
+			{ typeof( IPType ), IPObjectType.Type },
+			{ typeof( IPAsset ), IPObjectType.Asset },
+			{ typeof( IPAssetReference ), IPObjectType.AssetReference },
+			{ typeof( IPSceneObject ), IPObjectType.SceneObject },
+			{ typeof( IPSceneObjectReference ), IPObjectType.SceneObjectReference },
+			{ typeof( IPManagedObject ), IPObjectType.ManagedObject },
+			{ typeof( IPManagedReference ), IPObjectType.ManagedReference },
+			{ typeof( IPArray ), IPObjectType.Array },
+			{ typeof( IPGenericObject ), IPObjectType.GenericObject },
+			{ typeof( IPVector ), IPObjectType.Vector },
+			{ typeof( IPColor ), IPObjectType.Color },
+			{ typeof( IPLong ), IPObjectType.Long },
+			{ typeof( IPDouble ), IPObjectType.Double },
+			{ typeof( IPString ), IPObjectType.String },
+			{ typeof( IPAnimationCurve ), IPObjectType.AnimationCurve },
+			{ typeof( IPGradient ), IPObjectType.Gradient },
+		};
+
+		private static readonly Dictionary<Type, IPObjectType> typeToEnumLookup = new Dictionary<Type, IPObjectType>()
+		{
+			{ typeof( ManagedObjectClipboard ), IPObjectType.ManagedObject },
+			{ typeof( ArrayClipboard ), IPObjectType.Array },
+			{ typeof( GenericObjectClipboard ), IPObjectType.GenericObject },
+			{ typeof( VectorClipboard ), IPObjectType.Vector },
+			{ typeof( Color ), IPObjectType.Color },
+			{ typeof( long ), IPObjectType.Long },
+			{ typeof( double ), IPObjectType.Double },
+			{ typeof( string ), IPObjectType.String },
+			{ typeof( AnimationCurve ), IPObjectType.AnimationCurve },
+			{ typeof( Gradient ), IPObjectType.Gradient },
+		};
 
 		public IPType[] Types;
 		public IPSceneObject[] SceneObjects;
@@ -1260,28 +1232,109 @@ namespace InspectPlusNamespace
 		public IPManagedObject[] ManagedObjects;
 		public IPObject[] Values;
 
+		public IPObject RootValue { get { return Values[0]; } }
+		public IPObjectType RootType
+		{
+			get
+			{
+				IPObjectType typeEnum;
+				if( !serializedTypeToEnumLookup.TryGetValue( Values[0].GetType(), out typeEnum ) )
+					typeEnum = IPObjectType.Null;
+
+				return typeEnum;
+			}
+		}
+
+		public string Label;
+		private GUIContent m_labelContent;
+		public GUIContent LabelContent
+		{
+			get
+			{
+				if( m_labelContent == null )
+				{
+					if( Values.Length == 1 )
+						m_labelContent = new GUIContent( Label, Label );
+					else
+					{
+						StringBuilder sb = Utilities.stringBuilder;
+						sb.Length = 0;
+						sb.Append( Label ).Append( "\n\n" );
+
+						for( int i = 1; i < Values.Length; i++ )
+						{
+							sb.Append( Values[i].Name ).Append( ": " );
+
+							IPObjectType typeEnum;
+							if( !serializedTypeToEnumLookup.TryGetValue( Values[i].GetType(), out typeEnum ) )
+								sb.Append( Values[i].GetType().Name );
+							else
+							{
+								switch( typeEnum )
+								{
+									case IPObjectType.Null: sb.Append( "<null>" ); break;
+									case IPObjectType.AssetReference:
+										IPAsset asset = Assets[( (IPAssetReference) Values[i] ).AssetIndex];
+										sb.Append( Types[asset.TypeIndex].Name ).Append( " asset (" ).Append( asset.ObjectName ).Append( ")" ); break;
+									case IPObjectType.SceneObjectReference:
+										IPSceneObject sceneObject = SceneObjects[( (IPSceneObjectReference) Values[i] ).SceneObjectIndex];
+										sb.Append( Types[sceneObject.TypeIndex].Name ).Append( " scene object (" ).Append( sceneObject.ObjectName ).Append( ")" ); break;
+									case IPObjectType.Array:
+										IPArray array = (IPArray) Values[i];
+										sb.Append( array.ElementType ).Append( " array with " ).Append( array.Children == null ? 0 : array.Children.Length ).Append( " element(s)" ); break;
+									case IPObjectType.GenericObject: sb.Append( ( (IPGenericObject) Values[i] ).Type ).Append( " object" ); break;
+									case IPObjectType.Vector:
+										IPVector vector = (IPVector) Values[i];
+										sb.Append( "Vector(" ).Append( vector.C1.ToString( "F1" ) ).Append( ", " ).Append( vector.C2.ToString( "F1" ) ).Append( ", " ).Append( vector.C3.ToString( "F1" ) ).Append( ", " ).
+											Append( vector.C4.ToString( "F1" ) ).Append( ", " ).Append( vector.C5.ToString( "F1" ) ).Append( ", " ).Append( vector.C6.ToString( "F1" ) ).Append( ")" ); break;
+									case IPObjectType.Color:
+										Color32 color = (Color) Values[i].GetClipboardObject( null );
+										sb.Append( "Color(" ).Append( color.r ).Append( ", " ).Append( color.g ).Append( ", " ).Append( color.b ).Append( ", " ).Append( color.a ).Append( ")" ); break;
+									case IPObjectType.Double: sb.Append( (double) Values[i].GetClipboardObject( null ) ); break;
+									case IPObjectType.Long: sb.Append( (long) Values[i].GetClipboardObject( null ) ); break;
+									case IPObjectType.String: sb.Append( (string) Values[i].GetClipboardObject( null ) ); break;
+									default: sb.Append( typeEnum ); break;
+								}
+							}
+
+							if( i < Values.Length - 1 )
+								sb.Append( "\n" );
+						}
+
+						m_labelContent = new GUIContent( Label, sb.ToString() );
+					}
+				}
+
+				return m_labelContent;
+			}
+		}
+
 		private List<Type> typesToSerialize;
 		private List<Object> sceneObjectsToSerialize;
 		private List<Object> assetsToSerialize;
 		private List<ManagedObjectClipboard> managedObjectsToSerialize;
 
-		#region Serialization Functions
-		public string SerializeProperty( SerializedProperty property, bool prettyPrint )
+		#region Constructors
+		public SerializedClipboard( BinaryReader reader )
 		{
-			return SerializeClipboardData( property.CopyValue(), prettyPrint, property.serializedObject.targetObject );
+			Deserialize( reader );
 		}
 
-		public string SerializeClipboardData( object clipboardData, bool prettyPrint, Object source )
+		public SerializedClipboard( object clipboardData, Object source, string label )
 		{
+			Label = label;
+
 			// For Component, ScriptableObject and materials, serialize the fields as well (for name-based paste operations)
 			if( clipboardData is Component || clipboardData is ScriptableObject || clipboardData is Material )
-				return SerializeUnityObject( (Object) clipboardData, prettyPrint, source );
-
-			Values = new IPObject[1] { GetSerializableDataFromClipboardData( clipboardData, null, source ) };
-			return SerializeToXml( prettyPrint, source );
+				InitializeWithUnityObject( (Object) clipboardData, source );
+			else
+			{
+				Values = new IPObject[1] { ConvertClipboardObjectToIPObject( clipboardData, null, source ) };
+				Initialize( source );
+			}
 		}
 
-		private string SerializeUnityObject( Object value, bool prettyPrint, Object source )
+		private void InitializeWithUnityObject( Object value, Object source )
 		{
 			SerializedObject serializedObject = new SerializedObject( value );
 			int valueCount = 0;
@@ -1293,7 +1346,7 @@ namespace InspectPlusNamespace
 			}
 
 			IPObject[] serializedValues = new IPObject[valueCount + 1];
-			serializedValues[0] = GetSerializableDataFromClipboardData( value, null, source );
+			serializedValues[0] = ConvertClipboardObjectToIPObject( value, null, source );
 
 			if( valueCount > 0 )
 			{
@@ -1301,15 +1354,15 @@ namespace InspectPlusNamespace
 				foreach( SerializedProperty property in serializedObject.EnumerateDirectChildren() )
 				{
 					if( property.name != "m_Script" )
-						serializedValues[valueIndex++] = GetSerializableDataFromClipboardData( property.CopyValue(), property.name, value );
+						serializedValues[valueIndex++] = ConvertClipboardObjectToIPObject( property.CopyValue(), property.name, value );
 				}
 			}
 
 			Values = serializedValues;
-			return SerializeToXml( prettyPrint, source );
+			Initialize( source );
 		}
 
-		private string SerializeToXml( bool prettyPrint, Object source )
+		private void Initialize( Object source )
 		{
 			// Managed objects must be serialized first since these objects may fill the scene objects list and assets list as they are serialized
 			if( managedObjectsToSerialize != null && managedObjectsToSerialize.Count > 0 )
@@ -1348,184 +1401,196 @@ namespace InspectPlusNamespace
 
 				typesToSerialize = null;
 			}
-
-			XmlDocument xmlDocument = new XmlDocument();
-			XmlElement rootElement = xmlDocument.CreateElement( "InspectPlus" );
-			xmlDocument.AppendChild( rootElement );
-
-			CreateObjectArrayInChildXmlElement( rootElement, Types, "Types" );
-			CreateObjectArrayInChildXmlElement( rootElement, SceneObjects, "SceneObjects" );
-			CreateObjectArrayInChildXmlElement( rootElement, Assets, "Assets" );
-			CreateObjectArrayInChildXmlElement( rootElement, ManagedObjects, "ManagedObjects" );
-			CreateObjectArrayInChildXmlElement( rootElement, Values, "Values" );
-
-			XmlWriterSettings settings = new XmlWriterSettings
-			{
-				Indent = prettyPrint,
-				OmitXmlDeclaration = true
-			};
-
-			using( StringWriter textWriter = new StringWriter() )
-			using( XmlWriter xmlWriter = XmlWriter.Create( textWriter, settings ) )
-			{
-				xmlDocument.Save( xmlWriter );
-				return textWriter.ToString();
-			}
 		}
+		#endregion
 
-		public void Deserialize( string xmlContents )
+		#region Serialization Functions
+		public void Serialize( BinaryWriter writer )
 		{
-			Types = null;
-			ManagedObjects = null;
-			Values = null;
+			SerializeString( writer, Label );
+			SerializeArray( writer, Types );
+			SerializeArray( writer, SceneObjects );
+			SerializeArray( writer, Assets );
+			SerializeArray( writer, ManagedObjects );
+			SerializeArray( writer, Values );
+		}
 
-			XmlDocument xmlDocument = new XmlDocument();
-			xmlDocument.LoadXml( xmlContents );
+		public void Deserialize( BinaryReader reader )
+		{
+			Label = DeserializeString( reader );
+			Types = DeserializeArray<IPType>( reader );
+			SceneObjects = DeserializeArray<IPSceneObject>( reader );
+			Assets = DeserializeArray<IPAsset>( reader );
+			ManagedObjects = DeserializeArray<IPManagedObject>( reader );
+			Values = DeserializeArray<IPObject>( reader );
+		}
 
-			XmlNodeList childNodes = xmlDocument.DocumentElement.ChildNodes;
-			for( int i = 0; i < childNodes.Count; i++ )
+		private void SerializeArray( BinaryWriter writer, IPObject[] array )
+		{
+			if( array == null || array.Length == 0 )
+				writer.Write( 0 );
+			else
 			{
-				XmlElement childNode = (XmlElement) childNodes[i];
+				writer.Write( array.Length );
 
-				if( childNode.Name == "Types" )
-					Types = ReadObjectArrayFromXmlElement<IPType>( childNode );
-				else if( childNode.Name == "SceneObjects" )
-					SceneObjects = ReadObjectArrayFromXmlElement<IPSceneObject>( childNode );
-				else if( childNode.Name == "Assets" )
-					Assets = ReadObjectArrayFromXmlElement<IPAsset>( childNode );
-				else if( childNode.Name == "ManagedObjects" )
-					ManagedObjects = ReadObjectArrayFromXmlElement<IPManagedObject>( childNode );
-				else if( childNode.Name == "Values" )
-					Values = ReadObjectArrayFromXmlElement<IPObject>( childNode );
+				for( int i = 0; i < array.Length; i++ )
+					SerializeIPObject( writer, array[i] );
 			}
 		}
 
-		private IPObject GetSerializableDataFromClipboardData( object obj, string name, Object source )
+		private T[] DeserializeArray<T>( BinaryReader reader ) where T : IPObject
+		{
+			int arraySize = reader.ReadInt32();
+			if( arraySize == 0 )
+				return null;
+
+			T[] result = new T[arraySize];
+			for( int i = 0; i < arraySize; i++ )
+			{
+				result[i] = (T) InstantiateIPObject( (IPObjectType) reader.ReadInt32() );
+				result[i].Deserialize( reader );
+			}
+
+			return result;
+		}
+
+		private IPObject ConvertClipboardObjectToIPObject( object obj, string name, Object source )
 		{
 			if( obj == null || obj.Equals( null ) )
 				return new IPNull( this, name );
-			if( obj is Object )
-			{
-				Object value = (Object) obj;
-				if( !value )
-					return new IPNull( this, name );
-				else if( AssetDatabase.Contains( value ) )
-					return new IPAssetReference( this, name, value );
-				else
-					return new IPSceneObjectReference( this, name, value );
-			}
-			if( obj is ArrayClipboard )
-				return new IPArray( this, name, (ArrayClipboard) obj, source );
-			if( obj is GenericObjectClipboard )
-				return new IPGenericObject( this, name, (GenericObjectClipboard) obj, source );
-			if( obj is VectorClipboard )
-				return new IPVector( this, name, (VectorClipboard) obj );
-			if( obj is ManagedObjectClipboard )
-			{
-				object value = ( (ManagedObjectClipboard) obj ).value;
-				if( value == null || value.Equals( null ) )
-					return new IPNull( this, name );
-				else
-					return new IPManagedReference( this, name, (ManagedObjectClipboard) obj );
-			}
-			if( obj is long )
-				return new IPLong( this, name, (long) obj );
-			if( obj is double )
-				return new IPDouble( this, name, (double) obj );
-			if( obj is string )
-				return new IPString( this, name, (string) obj );
-			if( obj is AnimationCurve )
-				return new IPAnimationCurve( this, name, (AnimationCurve) obj );
-			if( obj is Gradient )
-				return new IPGradient( this, name, (Gradient) obj );
 
-			return new IPNull( this, name );
+			IPObjectType typeEnum;
+			if( !typeToEnumLookup.TryGetValue( obj.GetType(), out typeEnum ) )
+			{
+				if( obj is Object )
+				{
+					Object value = (Object) obj;
+					if( !value )
+						return new IPNull( this, name );
+					else if( AssetDatabase.Contains( value ) )
+						return new IPAssetReference( this, name, value );
+					else
+						return new IPSceneObjectReference( this, name, value );
+				}
+
+				return new IPNull( this, name );
+			}
+
+			switch( typeEnum )
+			{
+				case IPObjectType.Array: return new IPArray( this, name, (ArrayClipboard) obj, source );
+				case IPObjectType.GenericObject: return new IPGenericObject( this, name, (GenericObjectClipboard) obj, source );
+				case IPObjectType.Vector: return new IPVector( this, name, (VectorClipboard) obj );
+				case IPObjectType.Color: return new IPColor( this, name, (Color) obj );
+				case IPObjectType.Long: return new IPLong( this, name, (long) obj );
+				case IPObjectType.Double: return new IPDouble( this, name, (double) obj );
+				case IPObjectType.String: return new IPString( this, name, (string) obj );
+				case IPObjectType.AnimationCurve: return new IPAnimationCurve( this, name, (AnimationCurve) obj );
+				case IPObjectType.Gradient: return new IPGradient( this, name, (Gradient) obj );
+				case IPObjectType.ManagedObject:
+					object value = ( (ManagedObjectClipboard) obj ).value;
+					if( value == null || value.Equals( null ) )
+						return new IPNull( this, name );
+					else
+						return new IPManagedReference( this, name, (ManagedObjectClipboard) obj );
+				default: return new IPNull( this, name );
+			}
 		}
 
-		private XmlElement ConvertObjectToXmlElement( IPObject entry, XmlElement parent )
+		private void SerializeIPObject( BinaryWriter writer, IPObject entry )
 		{
-			string elementName;
-			if( entry is IPNull )
-				elementName = "Null";
-			else if( entry is IPAsset )
-				elementName = "Asset";
-			else if( entry is IPSceneObject )
-				elementName = "SceneObject";
-			else if( entry is IPAssetReference )
-				elementName = "AssetRef";
-			else if( entry is IPSceneObjectReference )
-				elementName = "SceneObjectRef";
-			else if( entry is IPArray )
-				elementName = "Array";
-			else if( entry is IPGenericObject )
-				elementName = "Generic";
-			else if( entry is IPVector )
-				elementName = "Vector";
-			else if( entry is IPManagedReference )
-				elementName = "ManagedRef";
-			else if( entry is IPLong )
-				elementName = "Long";
-			else if( entry is IPDouble )
-				elementName = "Double";
-			else if( entry is IPString )
-				elementName = "String";
-			else if( entry is IPAnimationCurve )
-				elementName = "Curve";
-			else if( entry is IPGradient )
-				elementName = "Gradient";
-			else if( entry is IPType )
-				elementName = "Type";
-			else if( entry is IPManagedObject )
-				elementName = "ManagedObject";
-			else
-				elementName = "Unknown";
+			IPObjectType typeEnum;
+			if( !serializedTypeToEnumLookup.TryGetValue( entry.GetType(), out typeEnum ) )
+				typeEnum = IPObjectType.Null;
 
-			XmlElement result = parent.OwnerDocument.CreateElement( elementName );
-			entry.WriteToXmlElement( result );
-			return result;
+			writer.Write( (int) typeEnum );
+			entry.Serialize( writer );
 		}
 
-		private IPObject ConvertXmlElementToObject( XmlElement element )
+		private IPObject InstantiateIPObject( IPObjectType typeEnum )
 		{
-			IPObject result;
-			string elementName = element.Name;
-			if( elementName == "Null" )
-				result = new IPNull( this );
-			else if( elementName == "Asset" )
-				result = new IPAsset( this );
-			else if( elementName == "SceneObject" )
-				result = new IPSceneObject( this );
-			else if( elementName == "AssetRef" )
-				result = new IPAssetReference( this );
-			else if( elementName == "SceneObjectRef" )
-				result = new IPSceneObjectReference( this );
-			else if( elementName == "Array" )
-				result = new IPArray( this );
-			else if( elementName == "Generic" )
-				result = new IPGenericObject( this );
-			else if( elementName == "Vector" )
-				result = new IPVector( this );
-			else if( elementName == "ManagedRef" )
-				result = new IPManagedReference( this );
-			else if( elementName == "Long" )
-				result = new IPLong( this );
-			else if( elementName == "Double" )
-				result = new IPDouble( this );
-			else if( elementName == "String" )
-				result = new IPString( this );
-			else if( elementName == "Curve" )
-				result = new IPAnimationCurve( this );
-			else if( elementName == "Gradient" )
-				result = new IPGradient( this );
-			else if( elementName == "Type" )
-				result = new IPType( this );
-			else if( elementName == "ManagedObject" )
-				result = new IPManagedObject( this );
-			else
-				result = new IPNull( this );
+			switch( typeEnum )
+			{
+				case IPObjectType.Null: return new IPNull( this );
+				case IPObjectType.Type: return new IPType( this );
+				case IPObjectType.Asset: return new IPAsset( this );
+				case IPObjectType.AssetReference: return new IPAssetReference( this );
+				case IPObjectType.SceneObject: return new IPSceneObject( this );
+				case IPObjectType.SceneObjectReference: return new IPSceneObjectReference( this );
+				case IPObjectType.ManagedObject: return new IPManagedObject( this );
+				case IPObjectType.ManagedReference: return new IPManagedReference( this );
+				case IPObjectType.Array: return new IPArray( this );
+				case IPObjectType.GenericObject: return new IPGenericObject( this );
+				case IPObjectType.Vector: return new IPVector( this );
+				case IPObjectType.Color: return new IPColor( this );
+				case IPObjectType.Long: return new IPLong( this );
+				case IPObjectType.Double: return new IPDouble( this );
+				case IPObjectType.String: return new IPString( this );
+				case IPObjectType.AnimationCurve: return new IPAnimationCurve( this );
+				case IPObjectType.Gradient: return new IPGradient( this );
+				default: return new IPNull( this );
+			}
+		}
+		#endregion
 
-			result.ReadFromXmlElement( element );
-			return result;
+		#region Paste Functions
+		public bool CanPasteToObject( Object target )
+		{
+			if( !target || ( target.hideFlags & HideFlags.NotEditable ) == HideFlags.NotEditable )
+				return false;
+
+			// Clipboard must contain the RootValue's fields, as well
+			if( Values.Length <= 1 )
+				return false;
+
+			// Allow pasting materials to materials only
+			bool isSerializedObjectMaterial = RootValue.GetClipboardObject( target ) as Material;
+			return isSerializedObjectMaterial == ( target is Material );
+		}
+
+		public void PasteToObject( Object target )
+		{
+			if( !target )
+				return;
+
+			// Perform a name-wise paste
+			Dictionary<string, IPObject> sourcePropertiesSerialized = new Dictionary<string, IPObject>( 32 );
+			for( int i = 1; i < Values.Length; i++ )
+			{
+				if( !string.IsNullOrEmpty( Values[i].Name ) )
+					sourcePropertiesSerialized[Values[i].Name] = Values[i];
+			}
+
+			StringBuilder sb = Utilities.stringBuilder;
+			sb.Length = 0;
+			sb.AppendLine( "Pasted variable(s):" );
+
+			int pastes = 0;
+			SerializedObject targetSerializedObject = new SerializedObject( target );
+			foreach( SerializedProperty property in targetSerializedObject.EnumerateDirectChildren() )
+			{
+				if( property.name == "m_Script" )
+					continue;
+
+				IPObject matchingProperty;
+				if( sourcePropertiesSerialized.TryGetValue( property.name, out matchingProperty ) )
+				{
+					object value = matchingProperty.GetClipboardObject( target );
+					if( property.CanPasteValue( value, true ) )
+					{
+						property.PasteValue( value, true );
+
+						sb.Append( "- " ).AppendLine( property.name );
+						pastes++;
+					}
+				}
+			}
+
+			if( pastes > 0 )
+			{
+				targetSerializedObject.ApplyModifiedProperties();
+				Debug.Log( sb.ToString() );
+			}
 		}
 		#endregion
 
@@ -1599,36 +1664,15 @@ namespace InspectPlusNamespace
 			return list.Count - 1;
 		}
 
-		private void CreateObjectArrayInChildXmlElement( XmlElement element, IPObject[] array, string childElementName )
+		private static void SerializeString( BinaryWriter writer, string value )
 		{
-			if( array != null && array.Length > 0 )
-			{
-				XmlElement arrayRoot = element.OwnerDocument.CreateElement( childElementName );
-				element.AppendChild( arrayRoot );
-				CreateObjectArrayInXmlElement( arrayRoot, array );
-			}
+			writer.Write( value ?? "" );
 		}
 
-		private void CreateObjectArrayInXmlElement( XmlElement element, IPObject[] array )
+		private static string DeserializeString( BinaryReader reader )
 		{
-			if( array != null && array.Length > 0 )
-			{
-				for( int i = 0; i < array.Length; i++ )
-					element.AppendChild( ConvertObjectToXmlElement( array[i], element ) );
-			}
-		}
-
-		private T[] ReadObjectArrayFromXmlElement<T>( XmlElement element ) where T : IPObject
-		{
-			XmlNodeList childNodes = element.ChildNodes;
-			if( childNodes == null || childNodes.Count == 0 )
-				return null;
-
-			T[] result = new T[childNodes.Count];
-			for( int i = 0; i < childNodes.Count; i++ )
-				result[i] = (T) ConvertXmlElementToObject( (XmlElement) childNodes[i] );
-
-			return result;
+			string result = reader.ReadString();
+			return result.Length > 0 ? result : null;
 		}
 		#endregion
 	}

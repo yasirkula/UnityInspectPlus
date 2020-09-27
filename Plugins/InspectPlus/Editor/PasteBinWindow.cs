@@ -1,7 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using Object = UnityEngine.Object;
 using VectorClipboard = InspectPlusNamespace.SerializablePropertyExtensions.VectorClipboard;
 using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ArrayClipboard;
 using GenericObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GenericObjectClipboard;
@@ -9,67 +14,73 @@ using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensio
 
 namespace InspectPlusNamespace
 {
+	// Paste Bin: a collection of save data that is shared between all Unity instances on the computer
+	// 
+	// We aren't using EditorPrefs for synchronizing data between Unity editor instances because
+	// changes made to EditorPrefs aren't reflected to other live Unity instances until domain reload.
+	// We want the changes to be immediately available on the other Unity instances
 	public class PasteBinWindow : EditorWindow, IHasCustomMenu
 	{
-		private const int CLIPBOARD_CAPACITY = 30;
+		private const int CLIPBOARD_CAPACITY = 16;
+		private const double CLIPBOARD_REFRESH_INTERVAL = 1.5;
+		private const double CLIPBOARD_REFRESH_MIN_COOLDOWN = 0.1;
+		private static readonly Color ACTIVE_CLIPBOARD_COLOR = new Color32( 245, 170, 35, 255 );
 
-		private static readonly Color activeClipboardColor = new Color32( 245, 170, 10, 255 );
-
-		private static readonly List<object> clipboard = new List<object>( 4 );
-		private static readonly List<GUIContent> clipboardLabels = new List<GUIContent>( 4 );
-		private static readonly List<Object> clipboardContexts = new List<Object>( 4 );
+		private double clipboardRefreshTime;
+		private static readonly List<SerializedClipboard> clipboard = new List<SerializedClipboard>( 4 );
+		private readonly List<object> clipboardValues = new List<object>( 4 );
 
 		private static PasteBinWindow mainWindow;
+
+		private static double clipboardIndexLastCheckTime;
+		private static double clipboardLastCheckTime;
+		private static DateTime clipboardLastDateTime;
 
 		private static int m_activeClipboardIndex;
 		private static int ActiveClipboardIndex
 		{
-			get { return m_activeClipboardIndex; }
+			get
+			{
+				// Don't refresh too frequently (too many file operations)
+				if( EditorApplication.timeSinceStartup - clipboardIndexLastCheckTime >= CLIPBOARD_REFRESH_MIN_COOLDOWN )
+				{
+					clipboardIndexLastCheckTime = EditorApplication.timeSinceStartup;
+
+					int index;
+					if( File.Exists( ClipboardIndexSavePath ) && int.TryParse( File.ReadAllText( ClipboardIndexSavePath ), out index ) )
+						m_activeClipboardIndex = index;
+				}
+
+				return m_activeClipboardIndex;
+			}
 			set
 			{
-				if( value >= 0 && value < clipboard.Count && ( m_activeClipboardIndex != value || clipboard.Count == 1 ) )
+				if( value >= 0 && value < clipboard.Count )
 				{
 					m_activeClipboardIndex = value;
 
-					if( InspectPlusSettings.Instance.UseXMLCopyFormat && clipboard[m_activeClipboardIndex] != null && !clipboard[m_activeClipboardIndex].Equals( null ) )
-					{
-						serializedClipboard = new SerializedClipboard();
-						serializedClipboardXML = serializedClipboard.SerializeClipboardData( clipboard[m_activeClipboardIndex], !InspectPlusSettings.Instance.OneLineXML, clipboardContexts[m_activeClipboardIndex] );
-						GUIUtility.systemCopyBuffer = serializedClipboardXML;
-					}
+					Directory.CreateDirectory( Path.GetDirectoryName( ClipboardIndexSavePath ) );
+					File.WriteAllText( ClipboardIndexSavePath, m_activeClipboardIndex.ToString() );
 				}
 			}
 		}
 
-		public static object ActiveClipboard
+		public static SerializedClipboard ActiveClipboard
 		{
 			get
 			{
-				if( InspectPlusSettings.Instance.UseXMLCopyFormat )
-				{
-					string systemCopyBuffer = GUIUtility.systemCopyBuffer;
-					if( !string.IsNullOrEmpty( systemCopyBuffer ) && systemCopyBuffer.StartsWith( "<InspectPlus>" ) )
-					{
-						if( systemCopyBuffer != serializedClipboardXML )
-						{
-							serializedClipboardXML = systemCopyBuffer;
-							serializedClipboard = new SerializedClipboard();
-							serializedClipboard.Deserialize( serializedClipboardXML );
-						}
-
-						return serializedClipboard;
-					}
-				}
-
+				LoadClipboard();
 				return ActiveClipboardIndex < clipboard.Count ? clipboard[ActiveClipboardIndex] : null;
 			}
 		}
 
-		private static SerializedClipboard serializedClipboard;
-		private static string serializedClipboardXML;
+		private static string ClipboardIndexSavePath { get { return Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.LocalApplicationData ), "Unity" + Path.DirectorySeparatorChar + "UnityInspectPlus.index" ); } }
+		private static string ClipboardSavePath { get { return Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.LocalApplicationData ), "Unity" + Path.DirectorySeparatorChar + "UnityInspectPlus.dat" ); } }
 
-		private MethodInfo gradientField;
-		private static GUIStyle activeClipboardBackgroundStyle;
+		private static GUIStyle clipboardLabelGUIStyle;
+		private static readonly MethodInfo gradientField = typeof( EditorGUILayout ).GetMethod( "GradientField", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof( GUIContent ), typeof( Gradient ), typeof( GUILayoutOption[] ) }, null );
+
+		private int clickedSerializedClipboardIndex = -1;
 		private Vector2 scrollPosition;
 
 		public static new void Show()
@@ -83,9 +94,30 @@ namespace InspectPlusNamespace
 		private void OnEnable()
 		{
 			mainWindow = this;
-			gradientField = typeof( EditorGUILayout ).GetMethod( "GradientField", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new System.Type[] { typeof( GUIContent ), typeof( Gradient ), typeof( GUILayoutOption[] ) }, null );
+
+			EditorApplication.update -= RefreshClipboardRegularly;
+			EditorApplication.update += RefreshClipboardRegularly;
+			EditorSceneManager.sceneOpened -= OnSceneOpened;
+			EditorSceneManager.sceneOpened += OnSceneOpened;
+			SceneManager.sceneLoaded -= OnSceneLoaded;
+			SceneManager.sceneLoaded += OnSceneLoaded;
+
+			if( !LoadClipboard() )
+			{
+				// When LoadClipboard returns true, clipboardValues are filled by LoadClipboard automatically
+				clipboardValues.Clear();
+				for( int i = 0; i < clipboard.Count; i++ )
+					clipboardValues.Add( clipboard[i].RootValue.GetClipboardObject( null ) );
+			}
 
 			Repaint();
+		}
+
+		private void OnDisable()
+		{
+			EditorApplication.update -= RefreshClipboardRegularly;
+			EditorSceneManager.sceneOpened -= OnSceneOpened;
+			SceneManager.sceneLoaded -= OnSceneLoaded;
 		}
 
 		private void OnDestroy()
@@ -96,52 +128,41 @@ namespace InspectPlusNamespace
 		void IHasCustomMenu.AddItemsToMenu( GenericMenu menu )
 		{
 			menu.AddItem( new GUIContent( "Clear" ), false, ClearClipboard );
+			menu.AddItem( new GUIContent( "About" ), false, ShowAboutDialog );
 		}
 
-		public static void AddToClipboard( object obj, string label, Object context )
+		private void RefreshClipboardRegularly()
 		{
-			if( obj == null || obj.Equals( null ) )
-				return;
-
-			if( clipboard.Count >= CLIPBOARD_CAPACITY )
+			if( EditorApplication.timeSinceStartup >= clipboardRefreshTime )
 			{
-				clipboard.RemoveAt( 0 );
-				clipboardLabels.RemoveAt( 0 );
-				clipboardContexts.RemoveAt( 0 );
+				clipboardRefreshTime = EditorApplication.timeSinceStartup + CLIPBOARD_REFRESH_INTERVAL;
+				LoadClipboard();
 			}
-
-			clipboard.Add( obj );
-			clipboardLabels.Add( new GUIContent( label, label ) );
-			// Context Object is useful for Object, array, generic object and managed object clipboards to help calculate RelativePath values when XML serialization is used
-			clipboardContexts.Add( ( obj is Object || obj is ArrayClipboard || obj is GenericObjectClipboard || obj is ManagedObjectClipboard ) ? context : null );
-
-			ActiveClipboardIndex = clipboard.Count - 1;
-
-			if( mainWindow )
-				mainWindow.Repaint();
 		}
 
-		public static void AddToClipboard( SerializedProperty prop )
+		private void OnSceneOpened( Scene scene, OpenSceneMode openSceneMode )
 		{
-			object clipboard = prop.CopyValue();
-			if( clipboard != null )
-				AddToClipboard( clipboard, string.Concat( prop.serializedObject.targetObject.name, ".", prop.serializedObject.targetObject.GetType().Name, ".", prop.name ), prop.serializedObject.targetObject );
+			RefreshSceneObjectClipboards();
+		}
+
+		private void OnSceneLoaded( Scene scene, LoadSceneMode loadSceneMode )
+		{
+			RefreshSceneObjectClipboards();
+		}
+
+		private void RefreshSceneObjectClipboards()
+		{
+			for( int i = 0; i < clipboard.Count; i++ )
+			{
+				if( clipboard[i].RootType == SerializedClipboard.IPObjectType.SceneObjectReference )
+					clipboardValues[i] = clipboard[i].RootValue.GetClipboardObject( null );
+			}
 		}
 
 		private void OnGUI()
 		{
-			if( activeClipboardBackgroundStyle == null )
-			{
-				Texture2D background = new Texture2D( 1, 1 );
-				background.SetPixel( 0, 0, activeClipboardColor );
-				background.Apply( false, true );
-
-				activeClipboardBackgroundStyle = new GUIStyle();
-				activeClipboardBackgroundStyle.normal.background = background;
-				activeClipboardBackgroundStyle.onNormal.background = background;
-			}
-
 			Event ev = Event.current;
+			Color backgroundColor = GUI.backgroundColor;
 
 			bool originalWideMode = EditorGUIUtility.wideMode;
 			float originalLabelWidth = EditorGUIUtility.labelWidth;
@@ -150,11 +171,12 @@ namespace InspectPlusNamespace
 			EditorGUIUtility.wideMode = windowWidth > 330f;
 			EditorGUIUtility.labelWidth = windowWidth < 350f ? 130f : windowWidth * 0.4f;
 
-			EditorGUILayout.HelpBox( "The highlighted value will be used in Paste operations. You can right click a value to set it active or remove it. Note that changing these values here won't affect the source objects.", MessageType.None );
+			EditorGUILayout.HelpBox( "The highlighted value will be used in Paste operations. You can right click a value to set it active or remove it.", MessageType.None );
 
 			scrollPosition = EditorGUILayout.BeginScrollView( scrollPosition );
 
-			for( int i = 0; i < clipboard.Count; i++ )
+			// Traverse the list in reverse order so that the newest SerializedClipboards will be at the top of the list
+			for( int i = clipboard.Count - 1; i >= 0; i-- )
 			{
 				if( clipboard[i] == null || clipboard[i].Equals( null ) )
 				{
@@ -162,60 +184,11 @@ namespace InspectPlusNamespace
 					continue;
 				}
 
-				if( ActiveClipboardIndex == i )
-					GUILayout.BeginHorizontal( activeClipboardBackgroundStyle );
+				DrawClipboardOnGUI( clipboard[i], clipboardValues[i], ActiveClipboardIndex == i );
 
-				if( clipboard[i] == null || clipboard[i].Equals( null ) || clipboard[i] is Object )
-					clipboard[i] = EditorGUILayout.ObjectField( clipboardLabels[i], clipboard[i] as Object, typeof( Object ), true );
-				else if( clipboard[i] is long )
-					clipboard[i] = EditorGUILayout.LongField( clipboardLabels[i], (long) clipboard[i] );
-				else if( clipboard[i] is double )
-					clipboard[i] = EditorGUILayout.DoubleField( clipboardLabels[i], (double) clipboard[i] );
-				else if( clipboard[i] is Color )
-					clipboard[i] = EditorGUILayout.ColorField( clipboardLabels[i], (Color) clipboard[i] );
-				else if( clipboard[i] is string )
-					clipboard[i] = EditorGUILayout.TextField( clipboardLabels[i], (string) clipboard[i] );
-				else if( clipboard[i] is bool )
-					clipboard[i] = EditorGUILayout.Toggle( clipboardLabels[i], (bool) clipboard[i] );
-				else if( clipboard[i] is AnimationCurve )
-					clipboard[i] = EditorGUILayout.CurveField( clipboardLabels[i], (AnimationCurve) clipboard[i] );
-				else if( clipboard[i] is Gradient )
-					clipboard[i] = gradientField.Invoke( null, new object[] { clipboardLabels[i], clipboard[i], null } );
-				else if( clipboard[i] is VectorClipboard )
-					clipboard[i] = (VectorClipboard) EditorGUILayout.Vector4Field( clipboardLabels[i], (VectorClipboard) clipboard[i] );
-				else if( clipboard[i] is ArrayClipboard )
+				if( ev.type == EventType.MouseDown && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 				{
-					ArrayClipboard obj = (ArrayClipboard) clipboard[i];
-					GUI.enabled = false;
-					EditorGUILayout.TextField( clipboardLabels[i], string.Concat( obj.elementType, "[", obj.elements.Length, "] array" ) );
-					GUI.enabled = true;
-				}
-				else if( clipboard[i] is GenericObjectClipboard )
-				{
-					GUI.enabled = false;
-					EditorGUILayout.TextField( clipboardLabels[i], ( (GenericObjectClipboard) clipboard[i] ).type + " object" );
-					GUI.enabled = true;
-				}
-				else if( clipboard[i] is ManagedObjectClipboard )
-				{
-					GUI.enabled = false;
-					EditorGUILayout.TextField( clipboardLabels[i], ( (ManagedObjectClipboard) clipboard[i] ).type + " object (SerializeField)" );
-					GUI.enabled = true;
-				}
-				else if( clipboard[i] is SerializedClipboard )
-				{
-					GUI.enabled = false;
-					EditorGUILayout.TextField( clipboardLabels[i], ( (SerializedClipboard) clipboard[i] ).Values[0].GetType() + " object (XML)" );
-					GUI.enabled = true;
-				}
-
-				if( ActiveClipboardIndex == i )
-					GUILayout.EndHorizontal();
-
-				if( ev.type == EventType.MouseDown && ev.button == 0 && /*ev.mousePosition.x <= EditorGUIUtility.labelWidth &&*/ GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
-				{
-					ActiveClipboardIndex = i;
-					Repaint();
+					clickedSerializedClipboardIndex = i;
 					ev.Use();
 				}
 				else if( ev.type == EventType.ContextClick && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
@@ -225,13 +198,44 @@ namespace InspectPlusNamespace
 					GenericMenu menu = new GenericMenu();
 					menu.AddItem( new GUIContent( "Select" ), false, SetActiveClipboard, j );
 					menu.AddItem( new GUIContent( "Remove" ), false, RemoveClipboard, j );
+
+					menu.AddSeparator( "" );
+					menu.AddItem( new GUIContent( "Copy To System Clipboard" ), false, CopyClipboardToSystemBuffer, j );
+
+					string systemBuffer = GUIUtility.systemCopyBuffer;
+					if( !string.IsNullOrEmpty( systemBuffer ) && systemBuffer.StartsWith( "Inspect+", StringComparison.Ordinal ) )
+						menu.AddItem( new GUIContent( "Paste From System Clipboard" ), false, PasteClipboardFromSystemBuffer, j );
+					else
+						menu.AddDisabledItem( new GUIContent( "Paste From System Clipboard" ) );
+
 					menu.ShowAsContext();
+
+					ev.Use();
+				}
+				else if( clickedSerializedClipboardIndex == i && ev.type == EventType.MouseUp && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+				{
+					clickedSerializedClipboardIndex = -1;
+
+					if( ev.button == 0 )
+					{
+						ActiveClipboardIndex = i;
+						Repaint();
+						ev.Use();
+					}
+					else if( ev.button == 2 )
+					{
+						RemoveClipboard( i );
+						Repaint();
+						ev.Use();
+					}
 				}
 			}
 
 			EditorGUILayout.EndScrollView();
 
-			if( ( ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated ) && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+			if( ev.type == EventType.MouseUp )
+				clickedSerializedClipboardIndex = -1;
+			else if( ( ev.type == EventType.DragPerform || ev.type == EventType.DragUpdated ) && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 			{
 				// Accept drag&drop
 				DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
@@ -241,7 +245,7 @@ namespace InspectPlusNamespace
 
 					Object[] draggedObjects = DragAndDrop.objectReferences;
 					for( int i = 0; i < draggedObjects.Length; i++ )
-						AddToClipboard( draggedObjects[i], "DRAG&DROP", draggedObjects[i] );
+						AddToClipboard( draggedObjects[i], Utilities.GetDetailedObjectName( draggedObjects[i] ), draggedObjects[i] );
 				}
 
 				ev.Use();
@@ -272,11 +276,100 @@ namespace InspectPlusNamespace
 			EditorGUIUtility.labelWidth = originalLabelWidth;
 		}
 
+		public static void DrawClipboardOnGUI( SerializedClipboard clipboard, object clipboardValue, bool isActiveClipboard )
+		{
+			if( clipboardLabelGUIStyle == null )
+				clipboardLabelGUIStyle = new GUIStyle( EditorStyles.boldLabel ) { wordWrap = true };
+
+			if( !isActiveClipboard )
+				GUILayout.BeginVertical( GUI.skin.box );
+			else
+			{
+				Color backgroundColor = GUI.backgroundColor;
+				GUI.backgroundColor = Color.Lerp( backgroundColor, ACTIVE_CLIPBOARD_COLOR, 0.5f );
+				GUILayout.BeginVertical( GUI.skin.box );
+				GUI.backgroundColor = backgroundColor;
+			}
+
+			EditorGUILayout.LabelField( clipboard.LabelContent, clipboardLabelGUIStyle );
+			EditorGUI.indentLevel++;
+
+			if( clipboardValue == null || clipboardValue.Equals( null ) || clipboardValue is Object )
+				EditorGUILayout.ObjectField( GUIContent.none, clipboardValue as Object, typeof( Object ), true );
+			else if( clipboardValue is long )
+				EditorGUILayout.TextField( GUIContent.none, ( (long) clipboardValue ).ToString() );
+			else if( clipboardValue is double )
+				EditorGUILayout.TextField( GUIContent.none, ( (double) clipboardValue ).ToString() );
+			else if( clipboardValue is Color )
+				EditorGUILayout.ColorField( GUIContent.none, (Color) clipboardValue );
+			else if( clipboardValue is string )
+				EditorGUILayout.TextField( GUIContent.none, (string) clipboardValue );
+			else if( clipboardValue is bool )
+				EditorGUILayout.Toggle( GUIContent.none, (bool) clipboardValue );
+			else if( clipboardValue is AnimationCurve )
+				EditorGUILayout.CurveField( GUIContent.none, (AnimationCurve) clipboardValue );
+			else if( clipboardValue is Gradient )
+				gradientField.Invoke( null, new object[] { GUIContent.none, clipboardValue, null } );
+			else if( clipboardValue is VectorClipboard )
+				EditorGUILayout.Vector4Field( GUIContent.none, (VectorClipboard) clipboardValue );
+			else if( clipboardValue is ArrayClipboard )
+			{
+				ArrayClipboard obj = (ArrayClipboard) clipboardValue;
+				EditorGUILayout.TextField( GUIContent.none, string.Concat( obj.elementType, "[", obj.elements.Length, "] array" ) );
+			}
+			else if( clipboardValue is GenericObjectClipboard )
+				EditorGUILayout.TextField( GUIContent.none, ( (GenericObjectClipboard) clipboardValue ).type + " object" );
+			else if( clipboardValue is ManagedObjectClipboard )
+				EditorGUILayout.TextField( GUIContent.none, ( (ManagedObjectClipboard) clipboardValue ).type + " object (SerializeField)" );
+			else
+				EditorGUILayout.TextField( GUIContent.none, clipboard.RootValue.GetType().Name + " object" );
+
+			EditorGUI.indentLevel--;
+			GUILayout.EndVertical();
+		}
+
 		private void SetActiveClipboard( object obj )
 		{
 			int index = (int) obj;
 			if( index < clipboard.Count )
 				ActiveClipboardIndex = index;
+		}
+
+		public static void AddToClipboard( SerializedProperty prop )
+		{
+			object clipboard = prop.CopyValue();
+			if( clipboard != null )
+				AddToClipboard( clipboard, string.Concat( Utilities.GetDetailedObjectName( prop.serializedObject.targetObject ), ".", prop.propertyPath.Replace( ".Array.data[", "[" ) ), prop.serializedObject.targetObject );
+		}
+
+		public static void AddToClipboard( object obj, string label, Object context )
+		{
+			if( obj == null || obj.Equals( null ) )
+				return;
+
+			LoadClipboard();
+
+			if( clipboard.Count >= CLIPBOARD_CAPACITY )
+			{
+				clipboard.RemoveAt( 0 );
+
+				if( mainWindow )
+					mainWindow.clipboardValues.RemoveAt( 0 );
+			}
+
+			clipboard.Add( new SerializedClipboard( obj, context, label ) );
+			ActiveClipboardIndex = clipboard.Count - 1;
+
+			if( mainWindow )
+			{
+				mainWindow.clipboardValues.Add( clipboard[clipboard.Count - 1].RootValue.GetClipboardObject( null ) );
+				mainWindow.Repaint();
+			}
+
+			// Call SaveClipboard in the next frame because sometimes AddToClipboard can be called in a batch (e.g. drag & drop,
+			// context menu) and we don't want to execute multiple file save operations in the same frame for no reason
+			EditorApplication.update -= SaveClipboardDelayed;
+			EditorApplication.update += SaveClipboardDelayed;
 		}
 
 		private void RemoveClipboard( object obj )
@@ -285,18 +378,163 @@ namespace InspectPlusNamespace
 			if( index < clipboard.Count )
 			{
 				clipboard.RemoveAt( index );
-				clipboardLabels.RemoveAt( index );
-				clipboardContexts.RemoveAt( index );
+				clipboardValues.RemoveAt( index );
 
 				if( ActiveClipboardIndex > 0 && ActiveClipboardIndex >= clipboard.Count )
 					ActiveClipboardIndex = clipboard.Count - 1;
 			}
+
+			SaveClipboard();
 		}
 
 		private void ClearClipboard()
 		{
 			clipboard.Clear();
+			clipboardValues.Clear();
+
 			ActiveClipboardIndex = 0;
+			SaveClipboard();
+		}
+
+		[Serializable]
+		private class SystemBufferWrapper
+		{
+			public byte[] serializedClipboard;
+		}
+
+		private void CopyClipboardToSystemBuffer( object obj )
+		{
+			int index = (int) obj;
+			if( index < clipboard.Count )
+			{
+				using( MemoryStream stream = new MemoryStream() )
+				using( BinaryWriter writer = new BinaryWriter( stream ) )
+				{
+					clipboard[index].Serialize( writer );
+					GUIUtility.systemCopyBuffer = "Inspect+" + JsonUtility.ToJson( new SystemBufferWrapper() { serializedClipboard = stream.ToArray() }, false );
+				}
+			}
+		}
+
+		private void PasteClipboardFromSystemBuffer( object obj )
+		{
+			int index = (int) obj;
+			string systemBuffer = GUIUtility.systemCopyBuffer;
+			if( string.IsNullOrEmpty( systemBuffer ) || !systemBuffer.StartsWith( "Inspect+", StringComparison.Ordinal ) )
+				return;
+
+			SystemBufferWrapper wrapper = JsonUtility.FromJson<SystemBufferWrapper>( systemBuffer.Substring( 8 ) );
+			if( wrapper == null )
+			{
+				Debug.LogError( "Couldn't parse JSON data" );
+				return;
+			}
+
+			using( MemoryStream stream = new MemoryStream( wrapper.serializedClipboard ) )
+			using( BinaryReader reader = new BinaryReader( stream ) )
+			{
+				SerializedClipboard _clipboard = new SerializedClipboard( reader );
+
+				if( clipboard.Count >= CLIPBOARD_CAPACITY )
+				{
+					clipboard.RemoveAt( 0 );
+					clipboardValues.RemoveAt( 0 );
+				}
+
+				clipboard.Insert( index, _clipboard );
+				clipboardValues.Insert( index, _clipboard.RootValue.GetClipboardObject( null ) );
+
+				ActiveClipboardIndex = index;
+
+				Repaint();
+				SaveClipboard();
+			}
+		}
+
+		private void ShowAboutDialog()
+		{
+			EditorUtility.DisplayDialog( "Paste Bin", "Paste Bin save file is located at: " + ClipboardSavePath + ".\n\nThe same file is used in all Unity projects on this computer.", "OK" );
+		}
+
+		public static List<SerializedClipboard> GetSerializedClipboards()
+		{
+			LoadClipboard();
+			return clipboard;
+		}
+
+		private static void SaveClipboardDelayed()
+		{
+			EditorApplication.update -= SaveClipboardDelayed;
+			SaveClipboard();
+		}
+
+		private static void SaveClipboard()
+		{
+			try
+			{
+				Directory.CreateDirectory( Path.GetDirectoryName( ClipboardSavePath ) );
+
+				using( FileStream stream = new FileStream( ClipboardSavePath, FileMode.Create, FileAccess.Write, FileShare.None ) )
+				using( BinaryWriter writer = new BinaryWriter( stream ) )
+				{
+					writer.Write( clipboard.Count );
+
+					for( int i = 0; i < clipboard.Count; i++ )
+						clipboard[i].Serialize( writer );
+				}
+
+				clipboardLastDateTime = File.GetLastWriteTimeUtc( ClipboardSavePath );
+			}
+			catch( Exception e )
+			{
+				Debug.LogException( e );
+			}
+		}
+
+		private static bool LoadClipboard()
+		{
+			if( EditorApplication.timeSinceStartup - clipboardLastCheckTime < CLIPBOARD_REFRESH_MIN_COOLDOWN )
+				return false;
+
+			clipboardLastCheckTime = EditorApplication.timeSinceStartup;
+
+			// Don't reload clipboard if it is up-to-date
+			FileInfo saveFile = new FileInfo( ClipboardSavePath );
+			if( !saveFile.Exists || saveFile.LastWriteTimeUtc <= clipboardLastDateTime )
+				return false;
+
+			clipboardLastDateTime = saveFile.LastWriteTimeUtc;
+			clipboard.Clear();
+
+			try
+			{
+				using( FileStream stream = new FileStream( ClipboardSavePath, FileMode.Open, FileAccess.Read, FileShare.Read ) )
+				using( BinaryReader reader = new BinaryReader( stream ) )
+				{
+					for( int i = 0, clipboardSize = reader.ReadInt32(); i < clipboardSize; i++ )
+						clipboard.Add( new SerializedClipboard( reader ) );
+				}
+			}
+			catch( IOException e )
+			{
+				Debug.LogException( e );
+			}
+			catch( Exception e )
+			{
+				Debug.LogWarning( "Couldn't load saved clipboard data (probably save format has changed in an update).\n" + e.ToString() );
+
+				clipboard.Clear();
+				saveFile.Delete();
+			}
+
+			if( mainWindow )
+			{
+				mainWindow.clipboardValues.Clear();
+				for( int i = 0; i < clipboard.Count; i++ )
+					mainWindow.clipboardValues.Add( clipboard[i].RootValue.GetClipboardObject( null ) );
+			}
+
+			return true;
 		}
 	}
 }
