@@ -7,7 +7,9 @@ namespace InspectPlusNamespace
 {
 	public class PasteBinContextWindow : EditorWindow
 	{
-		private readonly GUIContent smartPasteButtonLabel = new GUIContent( "Smart Paste", "Imagine objects A and B having children named C. When Smart Paste is enabled, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C after the paste operation" );
+		public enum PasteType { Normal = 0, ComponentAsNew = 1 };
+
+		private readonly GUIContent smartPasteButtonLabel = new GUIContent( "Smart Paste", "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C" );
 
 		private readonly List<SerializedClipboard> clipboard = new List<SerializedClipboard>( 4 );
 		private readonly List<object> clipboardValues = new List<object>( 4 );
@@ -15,9 +17,14 @@ namespace InspectPlusNamespace
 		private SerializedProperty targetProperty;
 		private Object[] targetObjects;
 
+		private PasteType pasteType;
+
 		private GUIStyle backgroundStyle;
 		private bool shouldRepositionSelf = true;
+		private bool shouldResizeSelf = false;
 		private bool shouldShowSmartPasteButton = false;
+
+		private Rect sourcePositionRect;
 
 		private Vector2? prevMousePos;
 		private Vector2 scrollPosition;
@@ -45,6 +52,7 @@ namespace InspectPlusNamespace
 		{
 			targetProperty = property;
 			targetObjects = null;
+			pasteType = PasteType.Normal;
 
 			Object context = property.serializedObject.targetObject;
 			List<SerializedClipboard> clipboardRaw = PasteBinWindow.GetSerializedClipboards();
@@ -73,10 +81,11 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		public void Initialize( Object[] objects )
+		public void Initialize( Object[] objects, PasteType pasteType )
 		{
 			targetProperty = null;
 			targetObjects = objects;
+			this.pasteType = pasteType;
 
 			List<SerializedClipboard> clipboardRaw = PasteBinWindow.GetSerializedClipboards();
 			for( int i = 0; i < clipboardRaw.Count; i++ )
@@ -149,31 +158,42 @@ namespace InspectPlusNamespace
 
 					if( ev.type == EventType.MouseDown && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 					{
-						if( targetProperty != null )
-							targetProperty.PasteValue( clipboard[i].RootValue );
-						else if( targetObjects != null )
+						int mouseButton = ev.button;
+						ev.Use();
+
+						if( mouseButton == 0 )
+							PasteClipboard( i );
+						else if( mouseButton == 1 )
 						{
-							for( int j = 0; j < targetObjects.Length; j++ )
-								clipboard[i].PasteToObject( targetObjects[j] );
+							int j = i;
+
+							GenericMenu menu = new GenericMenu();
+							menu.AddItem( new GUIContent( "Paste" ), false, PasteClipboard, j );
+							menu.AddItem( new GUIContent( "Delete" ), false, RemoveClipboard, j );
+							menu.ShowAsContext();
+
+							GUIUtility.ExitGUI();
 						}
 						else
-							Debug.LogError( "Both the SerializedProperty and the target Objects are null!" );
-
-						ev.Use();
-						Close();
+							RemoveClipboard( i );
 					}
 				}
 			}
 
 			GUILayout.EndVertical();
 
-			if( shouldRepositionSelf )
+			if( shouldRepositionSelf || shouldResizeSelf )
 			{
 				float preferredHeight = GUILayoutUtility.GetLastRect().height;
 				if( preferredHeight > 10f )
 				{
+					if( shouldRepositionSelf )
+						sourcePositionRect = new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ), Vector2.one );
+
 					shouldRepositionSelf = false;
-					ShowAsDropDown( new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ), Vector2.one ), new Vector2( position.width, preferredHeight + 15f ) );
+					shouldResizeSelf = false;
+
+					ShowAsDropDown( sourcePositionRect, new Vector2( position.width, preferredHeight + 15f ) );
 					GUIUtility.ExitGUI();
 				}
 			}
@@ -196,6 +216,44 @@ namespace InspectPlusNamespace
 			}
 			else if( ev.type == EventType.MouseUp )
 				prevMousePos = null;
+		}
+
+		private void PasteClipboard( object obj )
+		{
+			int index = (int) obj;
+
+			if( targetProperty != null )
+				targetProperty.PasteValue( clipboard[index].RootValue );
+			else if( targetObjects != null )
+			{
+				for( int j = 0; j < targetObjects.Length; j++ )
+				{
+					switch( pasteType )
+					{
+						case PasteType.Normal: clipboard[index].PasteToObject( targetObjects[j] ); break;
+						case PasteType.ComponentAsNew: clipboard[index].PasteAsNewComponent( targetObjects[j] ); break;
+					}
+				}
+			}
+			else
+				Debug.LogError( "Both the SerializedProperty and the target Objects are null!" );
+
+			Close();
+		}
+
+		private void RemoveClipboard( object obj )
+		{
+			int index = (int) obj;
+			if( index >= clipboard.Count )
+				return;
+
+			PasteBinWindow.RemoveClipboard( clipboard[index] );
+
+			clipboard.RemoveAt( index );
+			clipboardValues.RemoveAt( index );
+
+			shouldResizeSelf = true;
+			Repaint();
 		}
 	}
 }

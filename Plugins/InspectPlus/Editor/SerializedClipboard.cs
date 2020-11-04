@@ -131,6 +131,8 @@ namespace InspectPlusNamespace
 			public int TypeIndex;
 			protected IPType serializedType;
 
+			public Type Type { get { return root.Types[TypeIndex].Type; } }
+
 			protected IPObjectWithType( SerializedClipboard root ) : base( root ) { }
 			protected IPObjectWithType( SerializedClipboard root, string name, Type type ) : base( root, name )
 			{
@@ -1275,10 +1277,10 @@ namespace InspectPlusNamespace
 									case IPObjectType.Null: sb.Append( "<null>" ); break;
 									case IPObjectType.AssetReference:
 										IPAsset asset = Assets[( (IPAssetReference) Values[i] ).AssetIndex];
-										sb.Append( Types[asset.TypeIndex].Name ).Append( " asset (" ).Append( asset.ObjectName ).Append( ")" ); break;
+										sb.Append( asset.ObjectName ).Append( " (" ).Append( Types[asset.TypeIndex].Name ).Append( " asset)" ); break;
 									case IPObjectType.SceneObjectReference:
 										IPSceneObject sceneObject = SceneObjects[( (IPSceneObjectReference) Values[i] ).SceneObjectIndex];
-										sb.Append( Types[sceneObject.TypeIndex].Name ).Append( " scene object (" ).Append( sceneObject.ObjectName ).Append( ")" ); break;
+										sb.Append( sceneObject.ObjectName ).Append( " (" ).Append( Types[sceneObject.TypeIndex].Name ).Append( " scene object)" ); break;
 									case IPObjectType.Array:
 										IPArray array = (IPArray) Values[i];
 										sb.Append( array.ElementType ).Append( " array with " ).Append( array.Children == null ? 0 : array.Children.Length ).Append( " element(s)" ); break;
@@ -1548,7 +1550,21 @@ namespace InspectPlusNamespace
 			return isSerializedObjectMaterial == ( target is Material );
 		}
 
-		public void PasteToObject( Object target )
+		public bool CanPasteAsNewComponent( Object target )
+		{
+			if( !CanPasteToObject( target ) )
+				return false;
+
+			Type componentType = null;
+			if( RootValue is IPSceneObjectReference )
+				componentType = SceneObjects[( (IPSceneObjectReference) RootValue ).SceneObjectIndex].Type;
+			else if( RootValue is IPAssetReference )
+				componentType = Assets[( (IPAssetReference) RootValue ).AssetIndex].Type;
+
+			return componentType != null && typeof( Component ).IsAssignableFrom( componentType );
+		}
+
+		public void PasteToObject( Object target, bool logModifiedProperties = true )
 		{
 			if( !target )
 				return;
@@ -1562,8 +1578,11 @@ namespace InspectPlusNamespace
 			}
 
 			StringBuilder sb = Utilities.stringBuilder;
-			sb.Length = 0;
-			sb.AppendLine( "Pasted variable(s):" );
+			if( logModifiedProperties )
+			{
+				sb.Length = 0;
+				sb.AppendLine( "Pasted variable(s):" );
+			}
 
 			int pastes = 0;
 			SerializedObject targetSerializedObject = new SerializedObject( target );
@@ -1579,9 +1598,10 @@ namespace InspectPlusNamespace
 					if( property.CanPasteValue( value, true ) )
 					{
 						property.PasteValue( value, true );
-
-						sb.Append( "- " ).AppendLine( property.name );
 						pastes++;
+
+						if( logModifiedProperties )
+							sb.Append( "- " ).AppendLine( property.name );
 					}
 				}
 			}
@@ -1589,8 +1609,29 @@ namespace InspectPlusNamespace
 			if( pastes > 0 )
 			{
 				targetSerializedObject.ApplyModifiedProperties();
-				Debug.Log( sb.ToString() );
+
+				if( logModifiedProperties )
+					Debug.Log( sb.ToString() );
 			}
+		}
+
+		public void PasteAsNewComponent( Object target )
+		{
+			if( !target )
+				return;
+
+			Type componentType = null;
+			if( RootValue is IPSceneObjectReference )
+				componentType = SceneObjects[( (IPSceneObjectReference) RootValue ).SceneObjectIndex].Type;
+			else if( RootValue is IPAssetReference )
+				componentType = Assets[( (IPAssetReference) RootValue ).AssetIndex].Type;
+
+			GameObject gameObject = ( (Component) target ).gameObject;
+			Component newComponent = Undo.AddComponent( gameObject, componentType );
+			if( newComponent )
+				PasteToObject( newComponent, false );
+			else
+				Debug.LogError( string.Concat( "Couldn't add a ", componentType.FullName, " Component to ", gameObject.name ) );
 		}
 		#endregion
 

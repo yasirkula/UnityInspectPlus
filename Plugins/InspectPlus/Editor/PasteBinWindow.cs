@@ -30,6 +30,8 @@ namespace InspectPlusNamespace
 		private static readonly List<SerializedClipboard> clipboard = new List<SerializedClipboard>( 4 );
 		private readonly List<object> clipboardValues = new List<object>( 4 );
 
+		private static bool loadedActiveClipboardOnly;
+
 		private static PasteBinWindow mainWindow;
 
 		private static double clipboardIndexLastCheckTime;
@@ -69,8 +71,20 @@ namespace InspectPlusNamespace
 		{
 			get
 			{
-				LoadClipboard();
-				return ActiveClipboardIndex < clipboard.Count ? clipboard[ActiveClipboardIndex] : null;
+				LoadClipboard( true );
+
+				int activeClipboardIndex = ActiveClipboardIndex;
+				if( activeClipboardIndex >= clipboard.Count )
+					return null;
+
+				// This is an edge case: after loading only the active clipboard entry with LoadClipboard(true),
+				// if ActiveClipboardIndex is changed via another Unity project's Paste Bin window, then the
+				// clipboard entry at that new index will be null because LoadClipboard(true) loads only the latest
+				// clipboard entry and not the other entries. We must reload the whole clipboard data in this case
+				if( clipboard[activeClipboardIndex] == null )
+					LoadClipboard( false );
+
+				return clipboard[activeClipboardIndex];
 			}
 		}
 
@@ -372,13 +386,26 @@ namespace InspectPlusNamespace
 			EditorApplication.update += SaveClipboardDelayed;
 		}
 
-		private void RemoveClipboard( object obj )
+		public static void RemoveClipboard( SerializedClipboard clipboard )
+		{
+			int index = PasteBinWindow.clipboard.IndexOf( clipboard );
+			if( index >= 0 )
+			{
+				RemoveClipboard( index );
+
+				if( mainWindow )
+					mainWindow.Repaint();
+			}
+		}
+
+		private static void RemoveClipboard( object obj )
 		{
 			int index = (int) obj;
 			if( index < clipboard.Count )
 			{
 				clipboard.RemoveAt( index );
-				clipboardValues.RemoveAt( index );
+				if( mainWindow )
+					mainWindow.clipboardValues.RemoveAt( index );
 
 				if( ActiveClipboardIndex > 0 && ActiveClipboardIndex >= clipboard.Count )
 					ActiveClipboardIndex = clipboard.Count - 1;
@@ -479,7 +506,10 @@ namespace InspectPlusNamespace
 				{
 					writer.Write( clipboard.Count );
 
-					for( int i = 0; i < clipboard.Count; i++ )
+					// Writing the clipboard data in reverse order allows us to access the latest clipboard entry
+					// immediately while reading the clipboard data. Then, we can skip the rest of the clipboard
+					// data when possible (i.e. when loadActiveClipboardOnly=true in LoadClipboard)
+					for( int i = clipboard.Count - 1; i >= 0; i-- )
 						clipboard[i].Serialize( writer );
 				}
 
@@ -491,16 +521,20 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private static bool LoadClipboard()
+		private static bool LoadClipboard( bool loadActiveClipboardOnly = false )
 		{
 			if( EditorApplication.timeSinceStartup - clipboardLastCheckTime < CLIPBOARD_REFRESH_MIN_COOLDOWN )
 				return false;
 
 			clipboardLastCheckTime = EditorApplication.timeSinceStartup;
 
-			// Don't reload clipboard if it is up-to-date
 			FileInfo saveFile = new FileInfo( ClipboardSavePath );
-			if( !saveFile.Exists || saveFile.LastWriteTimeUtc <= clipboardLastDateTime )
+			if( !saveFile.Exists )
+				return false;
+
+			// Don't reload clipboard if it is up-to-date
+			bool shouldForceReload = !loadActiveClipboardOnly && loadedActiveClipboardOnly;
+			if( !shouldForceReload && saveFile.LastWriteTimeUtc <= clipboardLastDateTime )
 				return false;
 
 			clipboardLastDateTime = saveFile.LastWriteTimeUtc;
@@ -511,8 +545,28 @@ namespace InspectPlusNamespace
 				using( FileStream stream = new FileStream( ClipboardSavePath, FileMode.Open, FileAccess.Read, FileShare.Read ) )
 				using( BinaryReader reader = new BinaryReader( stream ) )
 				{
-					for( int i = 0, clipboardSize = reader.ReadInt32(); i < clipboardSize; i++ )
+					int clipboardSize = reader.ReadInt32();
+					if( loadActiveClipboardOnly && ActiveClipboardIndex == clipboardSize - 1 )
+					{
+						// This is the case most of the time
+						loadedActiveClipboardOnly = true;
+
 						clipboard.Add( new SerializedClipboard( reader ) );
+
+						// No need to deserialize the rest of the clipboard data
+						for( int i = 1; i < clipboardSize; i++ )
+							clipboard.Add( null );
+					}
+					else
+					{
+						loadedActiveClipboardOnly = false;
+
+						for( int i = 0; i < clipboardSize; i++ )
+							clipboard.Add( new SerializedClipboard( reader ) );
+					}
+
+					// We are writing the clipboard data in reverse order in SaveClipboard
+					clipboard.Reverse();
 				}
 			}
 			catch( IOException e )

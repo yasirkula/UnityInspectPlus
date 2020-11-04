@@ -110,7 +110,7 @@ namespace InspectPlusNamespace
 							if( ev.type == EventType.MouseDown && ev.button == 1 && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 							{
 								GenericMenu menu = new GenericMenu();
-								InspectPlusWindow.OnObjectRightClicked( menu, (Object) Obj );
+								MenuItems.OnObjectRightClicked( menu, (Object) Obj );
 								menu.ShowAsContext();
 
 								GUIUtility.ExitGUI();
