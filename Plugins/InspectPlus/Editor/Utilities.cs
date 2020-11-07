@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Text;
 using UnityEditor;
@@ -33,6 +34,8 @@ namespace InspectPlusNamespace
 		private static readonly string reflectionNameSpace = typeof( Assembly ).Namespace;
 		public static readonly StringBuilder stringBuilder = new StringBuilder( 256 );
 
+		private static MethodInfo screenFittedRectGetter;
+
 		public static string GetDetailedObjectName( Object obj )
 		{
 			if( !obj )
@@ -41,22 +44,24 @@ namespace InspectPlusNamespace
 			if( obj is GameObject )
 			{
 				Scene scene = ( (GameObject) obj ).scene;
-				return scene.IsValid() ? string.Concat( scene.name, "/", obj.name ) : ( obj.name + " Asset" );
+				return scene.IsValid() ? string.Concat( scene.name, "/", obj.name, ".GameObject" ) : ( obj.name + " Asset.GameObject" );
 			}
 			else if( obj is Component )
 			{
 				Scene scene = ( (Component) obj ).gameObject.scene;
 				return scene.IsValid() ? string.Concat( scene.name, "/", obj.name, ".", obj.GetType().Name ) : string.Concat( obj.name, " Asset.", obj.GetType().Name );
 			}
+			else if( obj is AssetImporter )
+				return string.Concat( Path.GetFileNameWithoutExtension( ( (AssetImporter) obj ).assetPath ), " (", obj.GetType().Name, " Asset)" );
 			else if( AssetDatabase.Contains( obj ) )
-				return obj.name + " Asset";
+				return string.Concat( obj.name, " (", obj.GetType().Name, " Asset)" );
 			else
 			{
 				string scenePath = AssetDatabase.GetAssetOrScenePath( obj );
 				if( !string.IsNullOrEmpty( scenePath ) )
-					return string.Concat( AssetDatabase.GetAssetOrScenePath( obj ), "/", obj.name, " ", obj.GetType().Name );
+					return string.Concat( scenePath, "/", obj.name, " (", obj.GetType().Name, ")" );
 				else
-					return string.Concat( obj.name, " ", obj.GetType().Name );
+					return string.Concat( obj.name, " (", obj.GetType().Name, ")" );
 			}
 		}
 
@@ -189,6 +194,15 @@ namespace InspectPlusNamespace
 				Type GenType = typeof( PropertyWrapper<> ).MakeGenericType( propertyInfo.PropertyType );
 				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, getMethod ) ).GetValue;
 			}
+		}
+
+		// Restricts the given Rect within the screen's bounds
+		internal static Rect GetScreenFittedRect( Rect originalRect )
+		{
+			if( screenFittedRectGetter == null )
+				screenFittedRectGetter = typeof( EditorWindow ).Assembly.GetType( "UnityEditor.ContainerWindow" ).GetMethod( "FitRectToScreen", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
+
+			return (Rect) screenFittedRectGetter.Invoke( null, new object[3] { originalRect, true, true } );
 		}
 	}
 }

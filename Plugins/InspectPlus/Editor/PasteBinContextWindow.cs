@@ -9,7 +9,10 @@ namespace InspectPlusNamespace
 	{
 		public enum PasteType { Normal = 0, ComponentAsNew = 1 };
 
-		private readonly GUIContent smartPasteButtonLabel = new GUIContent( "Smart Paste", "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C" );
+		private const string SMART_PASTE_TOOLTIP = "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C";
+
+		private readonly GUIContent smartPasteOnButtonLabel = new GUIContent( "Smart Paste ON", SMART_PASTE_TOOLTIP );
+		private readonly GUIContent smartPasteOffButtonLabel = new GUIContent( "Smart Paste OFF", SMART_PASTE_TOOLTIP );
 
 		private readonly List<SerializedClipboard> clipboard = new List<SerializedClipboard>( 4 );
 		private readonly List<object> clipboardValues = new List<object>( 4 );
@@ -24,9 +27,9 @@ namespace InspectPlusNamespace
 		private bool shouldResizeSelf = false;
 		private bool shouldShowSmartPasteButton = false;
 
-		private Rect sourcePositionRect;
-
+		private int hoveredClipboardIndex = -1;
 		private Vector2? prevMousePos;
+
 		private Vector2 scrollPosition;
 
 		public float PreferredWidth
@@ -44,7 +47,8 @@ namespace InspectPlusNamespace
 						width = _width;
 				}
 
-				return width;
+				// When width is smaller than ~250, horizontal scrollbar will show up
+				return Mathf.Max( width, 300f );
 			}
 		}
 
@@ -90,7 +94,8 @@ namespace InspectPlusNamespace
 			List<SerializedClipboard> clipboardRaw = PasteBinWindow.GetSerializedClipboards();
 			for( int i = 0; i < clipboardRaw.Count; i++ )
 			{
-				if( clipboardRaw[i].CanPasteToObject( objects[0] ) )
+				if( ( pasteType == PasteType.Normal && clipboardRaw[i].CanPasteToObject( objects[0] ) ) ||
+					( pasteType == PasteType.ComponentAsNew && clipboardRaw[i].CanPasteAsNewComponent( objects[0] ) ) )
 				{
 					clipboard.Add( clipboardRaw[i] );
 					clipboardValues.Add( clipboardRaw[i].RootValue.GetClipboardObject( null ) ); // RootValue won't be affected by smart copy-paste in this case
@@ -100,10 +105,33 @@ namespace InspectPlusNamespace
 			}
 		}
 
+		private void OnEnable()
+		{
+			wantsMouseMove = true;
+#if UNITY_2020_1_OR_NEWER
+			wantsLessLayoutEvents = false;
+#endif
+
+			EditorApplication.update -= CheckWindowFocusRegularly;
+			EditorApplication.update += CheckWindowFocusRegularly;
+		}
+
+		private void OnDisable()
+		{
+			EditorApplication.update -= CheckWindowFocusRegularly;
+			PasteBinTooltip.Hide();
+		}
+
+		private void CheckWindowFocusRegularly()
+		{
+			if( focusedWindow != this || EditorApplication.isCompiling )
+				Close();
+		}
+
 		private void OnGUI()
 		{
 			if( backgroundStyle == null )
-				backgroundStyle = new GUIStyle( GUI.skin.box ) { margin = new RectOffset( 0, 0, 0, 0 ), padding = new RectOffset( 0, 0, 0, 0 ) };
+				backgroundStyle = new GUIStyle( PasteBinTooltip.Style ) { margin = new RectOffset( 0, 0, 0, 0 ), padding = new RectOffset( 0, 0, 0, 0 ) };
 
 			Event ev = Event.current;
 
@@ -126,7 +154,7 @@ namespace InspectPlusNamespace
 				GUILayout.Label( "Select value to paste:", EditorStyles.boldLabel );
 
 				EditorGUI.BeginChangeCheck();
-				InspectPlusSettings.Instance.SmartCopyPaste = GUILayout.Toggle( InspectPlusSettings.Instance.SmartCopyPaste, smartPasteButtonLabel, GUI.skin.button );
+				InspectPlusSettings.Instance.SmartCopyPaste = GUILayout.Toggle( InspectPlusSettings.Instance.SmartCopyPaste, InspectPlusSettings.Instance.SmartCopyPaste ? smartPasteOnButtonLabel : smartPasteOffButtonLabel, GUI.skin.button );
 				if( EditorGUI.EndChangeCheck() )
 				{
 					EditorUtility.SetDirty( InspectPlusSettings.Instance );
@@ -147,6 +175,8 @@ namespace InspectPlusNamespace
 				GUILayout.EndHorizontal();
 			}
 
+			int hoveredClipboardIndex = -1;
+
 			if( clipboard.Count == 0 )
 				GUILayout.Label( "Nothing to paste here..." );
 			else
@@ -154,30 +184,34 @@ namespace InspectPlusNamespace
 				// Traverse the list in reverse order so that the newest SerializedClipboards will be at the top of the list
 				for( int i = clipboard.Count - 1; i >= 0; i-- )
 				{
-					PasteBinWindow.DrawClipboardOnGUI( clipboard[i], clipboardValues[i], false );
+					PasteBinWindow.DrawClipboardOnGUI( clipboard[i], clipboardValues[i], this.hoveredClipboardIndex == i, false );
 
-					if( ev.type == EventType.MouseDown && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
-					{
-						int mouseButton = ev.button;
-						ev.Use();
-
-						if( mouseButton == 0 )
-							PasteClipboard( i );
-						else if( mouseButton == 1 )
-						{
-							int j = i;
-
-							GenericMenu menu = new GenericMenu();
-							menu.AddItem( new GUIContent( "Paste" ), false, PasteClipboard, j );
-							menu.AddItem( new GUIContent( "Delete" ), false, RemoveClipboard, j );
-							menu.ShowAsContext();
-
-							GUIUtility.ExitGUI();
-						}
-						else
-							RemoveClipboard( i );
-					}
+					if( hoveredClipboardIndex < 0 && ( ev.type == EventType.MouseDown || ev.type == EventType.MouseMove ) && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+						hoveredClipboardIndex = i;
 				}
+			}
+
+			if( ev.type == EventType.MouseMove && this.hoveredClipboardIndex != hoveredClipboardIndex )
+				OnHoveredClipboardChanged( hoveredClipboardIndex );
+
+			if( ev.type == EventType.MouseDown && hoveredClipboardIndex >= 0 )
+			{
+				int mouseButton = ev.button;
+				ev.Use();
+
+				if( mouseButton == 0 )
+					PasteClipboard( hoveredClipboardIndex );
+				else if( mouseButton == 1 )
+				{
+					GenericMenu menu = new GenericMenu();
+					menu.AddItem( new GUIContent( "Paste" ), false, PasteClipboard, hoveredClipboardIndex );
+					menu.AddItem( new GUIContent( "Delete" ), false, RemoveClipboard, hoveredClipboardIndex );
+					menu.ShowAsContext();
+
+					GUIUtility.ExitGUI();
+				}
+				else
+					RemoveClipboard( hoveredClipboardIndex );
 			}
 
 			GUILayout.EndVertical();
@@ -187,13 +221,16 @@ namespace InspectPlusNamespace
 				float preferredHeight = GUILayoutUtility.GetLastRect().height;
 				if( preferredHeight > 10f )
 				{
+					Vector2 size = new Vector2( position.width, preferredHeight + 15f );
+
 					if( shouldRepositionSelf )
-						sourcePositionRect = new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ), Vector2.one );
+						position = Utilities.GetScreenFittedRect( new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ) - size * 0.5f, size ) );
+					else if( shouldResizeSelf )
+						position = new Rect( position.position, size );
 
 					shouldRepositionSelf = false;
 					shouldResizeSelf = false;
 
-					ShowAsDropDown( sourcePositionRect, new Vector2( position.width, preferredHeight + 15f ) );
 					GUIUtility.ExitGUI();
 				}
 			}
@@ -216,6 +253,17 @@ namespace InspectPlusNamespace
 			}
 			else if( ev.type == EventType.MouseUp )
 				prevMousePos = null;
+		}
+
+		private void OnHoveredClipboardChanged( int hoveredClipboardIndex )
+		{
+			this.hoveredClipboardIndex = hoveredClipboardIndex;
+			if( hoveredClipboardIndex < 0 || clipboard[hoveredClipboardIndex].Values.Length == 1 ) // Values.Length == 1: no meaningful tooltip
+				PasteBinTooltip.Hide();
+			else
+				PasteBinTooltip.Show( position, clipboard[hoveredClipboardIndex].LabelContent.tooltip );
+
+			Repaint();
 		}
 
 		private void PasteClipboard( object obj )
@@ -251,6 +299,9 @@ namespace InspectPlusNamespace
 
 			clipboard.RemoveAt( index );
 			clipboardValues.RemoveAt( index );
+
+			hoveredClipboardIndex = -1;
+			PasteBinTooltip.Hide();
 
 			shouldResizeSelf = true;
 			Repaint();

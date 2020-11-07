@@ -152,30 +152,24 @@ namespace InspectPlusNamespace
 			ContextMenuItemPasteObjectFromBin( new MenuCommand( null ) );
 		}
 
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL, validate = true )]
+		private static bool ContextMenuItemPasteComponentAsNewValidate( MenuCommand command )
+		{
+			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context );
+		}
+
+		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL, validate = true )]
+		private static bool ContextMenuItemPasteComponentAsNewFromBinValidate( MenuCommand command )
+		{
+			return ValidatePasteOperation( command );
+		}
+
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_LABEL, validate = true )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
 		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
 		private static bool ContextMenuItemPasteObjectValidate( MenuCommand command )
 		{
-			if( !command.context )
-			{
-				Debug.LogError( "Encountered empty context, probably a missing script." );
-				return false;
-			}
-
-			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteToObject( command.context );
-		}
-
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL, validate = true )]
-		private static bool ContextMenuItemPasteComponentAsNewValidate( MenuCommand command )
-		{
-			if( !command.context )
-			{
-				Debug.LogError( "Encountered empty context, probably a missing script." );
-				return false;
-			}
-
-			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context );
+			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteToObject( command.context );
 		}
 
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_FROM_BIN_LABEL, validate = true )]
@@ -183,23 +177,19 @@ namespace InspectPlusNamespace
 		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_FROM_BIN_LABEL, validate = true )]
 		private static bool ContextMenuItemPasteObjectFromBinValidate( MenuCommand command )
 		{
-			if( !command.context )
-			{
-				Debug.LogError( "Encountered empty context, probably a missing script." );
-				return false;
-			}
-
-			return true;
+			return ValidatePasteOperation( command );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL, validate = true )]
-		private static bool ContextMenuItemPasteComponentAsNewFromBinValidate( MenuCommand command )
+		private static bool ValidatePasteOperation( MenuCommand command )
 		{
 			if( !command.context )
 			{
 				Debug.LogError( "Encountered empty context, probably a missing script." );
 				return false;
 			}
+
+			if( ( command.context.hideFlags & HideFlags.NotEditable ) == HideFlags.NotEditable )
+				return false;
 
 			return true;
 		}
@@ -348,6 +338,7 @@ namespace InspectPlusNamespace
 
 				window.position = new Rect( new Vector2( -9999f, -9999f ), new Vector2( window.PreferredWidth, 9999f ) );
 				window.ShowPopup();
+				window.Focus();
 			}
 			else
 				Debug.LogError( "Passed parameter is neither a SerializedProperty nor an Object." );

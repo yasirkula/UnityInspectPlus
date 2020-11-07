@@ -87,7 +87,53 @@ namespace InspectPlusNamespace
 				if( !typeRecreated )
 				{
 					typeRecreated = true;
+
 					m_type = Type.GetType( AssemblyQualifiedName );
+					if( m_type == null )
+					{
+						// Unity classes' AssemblyQualifiedNames can change between Unity versions but their FullNames usually stay the same
+						int fullNameEndIndex = AssemblyQualifiedName.IndexOf( ',' );
+						if( fullNameEndIndex >= 0 )
+						{
+							string typeFullName = AssemblyQualifiedName.Substring( 0, fullNameEndIndex );
+							if( typeFullName.StartsWith( "UnityEngine" ) )
+							{
+								// A very common Assembly change is UnityEngine <-> UnityEngine.CoreModule 
+								if( AssemblyQualifiedName.Contains( "UnityEngine.CoreModule," ) )
+								{
+									// Type conversion from newer Unity versions to older Unity versions
+									m_type = Type.GetType( AssemblyQualifiedName.Replace( "UnityEngine.CoreModule,", "UnityEngine," ) );
+								}
+								else if( AssemblyQualifiedName.Contains( "UnityEngine," ) )
+								{
+									// Type conversion from older Unity versions to newer Unity versions
+									m_type = Type.GetType( AssemblyQualifiedName.Replace( "UnityEngine,", "UnityEngine.CoreModule," ) );
+								}
+
+								// Search all loaded Unity assemblies for the type
+								if( m_type == null )
+								{
+									foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+									{
+										if( !assembly.FullName.StartsWith( "UnityEngine" ) )
+											continue;
+
+										foreach( Type type in assembly.GetExportedTypes() )
+										{
+											if( type.FullName == typeFullName )
+											{
+												m_type = type;
+												break;
+											}
+										}
+
+										if( m_type != null )
+											break;
+									}
+								}
+							}
+						}
+					}
 				}
 
 				return m_type;
@@ -130,8 +176,6 @@ namespace InspectPlusNamespace
 		{
 			public int TypeIndex;
 			protected IPType serializedType;
-
-			public Type Type { get { return root.Types[TypeIndex].Type; } }
 
 			protected IPObjectWithType( SerializedClipboard root ) : base( root ) { }
 			protected IPObjectWithType( SerializedClipboard root, string name, Type type ) : base( root, name )
@@ -1235,6 +1279,7 @@ namespace InspectPlusNamespace
 		public IPObject[] Values;
 
 		public IPObject RootValue { get { return Values[0]; } }
+
 		public IPObjectType RootType
 		{
 			get
@@ -1244,6 +1289,19 @@ namespace InspectPlusNamespace
 					typeEnum = IPObjectType.Null;
 
 				return typeEnum;
+			}
+		}
+
+		public IPType RootUnityObjectType
+		{
+			get
+			{
+				if( RootValue is IPSceneObjectReference )
+					return Types[SceneObjects[( (IPSceneObjectReference) RootValue ).SceneObjectIndex].TypeIndex];
+				else if( RootValue is IPAssetReference )
+					return Types[Assets[( (IPAssetReference) RootValue ).AssetIndex].TypeIndex];
+				else
+					return null;
 			}
 		}
 
@@ -1546,22 +1604,36 @@ namespace InspectPlusNamespace
 				return false;
 
 			// Allow pasting materials to materials only
-			bool isSerializedObjectMaterial = RootValue.GetClipboardObject( target ) as Material;
-			return isSerializedObjectMaterial == ( target is Material );
+			IPType objectType = RootUnityObjectType;
+			bool isSerializedObjectMaterial = objectType != null && objectType.Type != null && typeof( Material ).IsAssignableFrom( objectType.Type );
+			if( isSerializedObjectMaterial != ( target is Material ) )
+				return false;
+
+			// Make sure that there is at least 1 serialized property that can be pasted to target Object
+			HashSet<string> sourcePropertiesSerialized = new HashSet<string>();
+			for( int i = 1; i < Values.Length; i++ )
+			{
+				if( !string.IsNullOrEmpty( Values[i].Name ) )
+					sourcePropertiesSerialized.Add( Values[i].Name );
+			}
+
+			SerializedObject targetSerializedObject = new SerializedObject( target );
+			foreach( SerializedProperty property in targetSerializedObject.EnumerateDirectChildren() )
+			{
+				if( property.name != "m_Script" && sourcePropertiesSerialized.Contains( property.name ) )
+					return true;
+			}
+
+			return false;
 		}
 
 		public bool CanPasteAsNewComponent( Object target )
 		{
-			if( !CanPasteToObject( target ) )
+			if( !target || ( target.hideFlags & HideFlags.NotEditable ) == HideFlags.NotEditable )
 				return false;
 
-			Type componentType = null;
-			if( RootValue is IPSceneObjectReference )
-				componentType = SceneObjects[( (IPSceneObjectReference) RootValue ).SceneObjectIndex].Type;
-			else if( RootValue is IPAssetReference )
-				componentType = Assets[( (IPAssetReference) RootValue ).AssetIndex].Type;
-
-			return componentType != null && typeof( Component ).IsAssignableFrom( componentType );
+			IPType objectType = RootUnityObjectType;
+			return objectType != null && objectType.Type != null && typeof( Component ).IsAssignableFrom( objectType.Type );
 		}
 
 		public void PasteToObject( Object target, bool logModifiedProperties = true )
@@ -1620,18 +1692,22 @@ namespace InspectPlusNamespace
 			if( !target )
 				return;
 
-			Type componentType = null;
-			if( RootValue is IPSceneObjectReference )
-				componentType = SceneObjects[( (IPSceneObjectReference) RootValue ).SceneObjectIndex].Type;
-			else if( RootValue is IPAssetReference )
-				componentType = Assets[( (IPAssetReference) RootValue ).AssetIndex].Type;
+			IPType objectType = RootUnityObjectType;
+			if( objectType == null )
+				return;
+
+			if( objectType.Type == null )
+			{
+				Debug.LogError( string.Concat( "Type \"", objectType.AssemblyQualifiedName, "\" doesn't exist in the project" ) );
+				return;
+			}
 
 			GameObject gameObject = ( (Component) target ).gameObject;
-			Component newComponent = Undo.AddComponent( gameObject, componentType );
+			Component newComponent = Undo.AddComponent( gameObject, objectType.Type );
 			if( newComponent )
 				PasteToObject( newComponent, false );
 			else
-				Debug.LogError( string.Concat( "Couldn't add a ", componentType.FullName, " Component to ", gameObject.name ) );
+				Debug.LogError( string.Concat( "Couldn't add a ", objectType.Type.FullName, " Component to ", gameObject.name ) );
 		}
 		#endregion
 

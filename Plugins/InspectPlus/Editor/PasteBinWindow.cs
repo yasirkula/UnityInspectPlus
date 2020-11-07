@@ -198,7 +198,7 @@ namespace InspectPlusNamespace
 					continue;
 				}
 
-				DrawClipboardOnGUI( clipboard[i], clipboardValues[i], ActiveClipboardIndex == i );
+				DrawClipboardOnGUI( clipboard[i], clipboardValues[i], ActiveClipboardIndex == i, true );
 
 				if( ev.type == EventType.MouseDown && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
 				{
@@ -290,22 +290,26 @@ namespace InspectPlusNamespace
 			EditorGUIUtility.labelWidth = originalLabelWidth;
 		}
 
-		public static void DrawClipboardOnGUI( SerializedClipboard clipboard, object clipboardValue, bool isActiveClipboard )
+		public static void DrawClipboardOnGUI( SerializedClipboard clipboard, object clipboardValue, bool isActiveClipboard, bool showTooltip )
 		{
 			if( clipboardLabelGUIStyle == null )
 				clipboardLabelGUIStyle = new GUIStyle( EditorStyles.boldLabel ) { wordWrap = true };
 
 			if( !isActiveClipboard )
-				GUILayout.BeginVertical( GUI.skin.box );
+				GUILayout.BeginVertical( PasteBinTooltip.Style );
 			else
 			{
 				Color backgroundColor = GUI.backgroundColor;
 				GUI.backgroundColor = Color.Lerp( backgroundColor, ACTIVE_CLIPBOARD_COLOR, 0.5f );
-				GUILayout.BeginVertical( GUI.skin.box );
+				GUILayout.BeginVertical( PasteBinTooltip.Style );
 				GUI.backgroundColor = backgroundColor;
 			}
 
-			EditorGUILayout.LabelField( clipboard.LabelContent, clipboardLabelGUIStyle );
+			if( showTooltip )
+				EditorGUILayout.LabelField( clipboard.LabelContent, clipboardLabelGUIStyle );
+			else
+				EditorGUILayout.LabelField( clipboard.Label, clipboardLabelGUIStyle );
+
 			EditorGUI.indentLevel++;
 
 			if( clipboardValue == null || clipboardValue.Equals( null ) || clipboardValue is Object )
