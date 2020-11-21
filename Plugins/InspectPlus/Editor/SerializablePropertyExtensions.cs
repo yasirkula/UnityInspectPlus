@@ -6,20 +6,45 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using IPObject = InspectPlusNamespace.SerializedClipboard.IPObject;
+using IPGameObjectHierarchy = InspectPlusNamespace.SerializedClipboard.IPGameObjectHierarchy;
 
 namespace InspectPlusNamespace
 {
 	public static class SerializablePropertyExtensions
 	{
 		#region Helper Classes
+		public class GameObjectHierarchyClipboard
+		{
+			public readonly GameObject source;
+			public readonly bool includeChildren;
+
+			public readonly IPGameObjectHierarchy serializedData;
+
+			public GameObjectHierarchyClipboard( GameObject source, bool includeChildren )
+			{
+				this.source = source;
+				this.includeChildren = includeChildren;
+				this.serializedData = null;
+			}
+
+			public GameObjectHierarchyClipboard( IPGameObjectHierarchy serializedData )
+			{
+				this.source = null;
+				this.includeChildren = true;
+				this.serializedData = serializedData;
+			}
+		}
+
 		public class GenericObjectClipboard
 		{
 			public readonly string type;
+			public readonly string[] variables;
 			public readonly object[] values;
 
-			public GenericObjectClipboard( string type, object[] values )
+			public GenericObjectClipboard( string type, string[] variables, object[] values )
 			{
 				this.type = type;
+				this.variables = variables;
 				this.values = values;
 			}
 		}
@@ -127,6 +152,10 @@ namespace InspectPlusNamespace
 		private static readonly FieldInfoGetter fieldInfoGetter;
 		private static readonly PropertyInfo gradientValueGetter;
 		private static readonly PropertyInfo inspectorModeGetter;
+#if !UNITY_2017_2_OR_NEWER
+		private static readonly PropertyInfo transformRotationOrderGetter;
+		private static readonly MethodInfo transformDisplayedRotationGetter;
+#endif
 
 		static SerializablePropertyExtensions()
 		{
@@ -139,6 +168,11 @@ namespace InspectPlusNamespace
 			fieldInfoGetter = (FieldInfoGetter) Delegate.CreateDelegate( typeof( FieldInfoGetter ), fieldInfoGetterMethod );
 			gradientValueGetter = typeof( SerializedProperty ).GetProperty( "gradientValue", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
 			inspectorModeGetter = typeof( SerializedObject ).GetProperty( "inspectorMode", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
+
+#if !UNITY_2017_2_OR_NEWER
+			transformRotationOrderGetter = typeof( Transform ).GetProperty( "rotationOrder", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
+			transformDisplayedRotationGetter = typeof( Transform ).GetMethod( "GetLocalEulerAngles", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
+#endif
 		}
 
 		public static object CopyValue( this SerializedProperty property )
@@ -212,7 +246,14 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.Quaternion:
 					// Special case: copy Transform's Rotation as localEulerAngles instead of localRotation
 					if( property.name == "m_LocalRotation" && property.serializedObject.targetObject is Transform && (InspectorMode) inspectorModeGetter.GetValue( property.serializedObject, null ) == InspectorMode.Normal )
-						return (VectorClipboard) property.serializedObject.FindProperty( "m_LocalEulerAnglesHint" ).vector3Value;
+					{
+						Transform targetTransform = (Transform) property.serializedObject.targetObject;
+#if UNITY_2017_2_OR_NEWER
+						return (VectorClipboard) TransformUtils.GetInspectorRotation( targetTransform );
+#else
+						return (VectorClipboard) (Vector3) transformDisplayedRotationGetter.Invoke( targetTransform, new object[1] { transformRotationOrderGetter.GetValue( targetTransform, null ) } );
+#endif
+					}
 					else
 						return (VectorClipboard) property.quaternionValue;
 				case SerializedPropertyType.Rect: return (VectorClipboard) property.rectValue;
@@ -255,16 +296,20 @@ namespace InspectPlusNamespace
 							count++;
 
 						string type = property.type;
+						string[] variables = new string[count];
 						object[] values = new object[count];
 
 						if( count > 0 )
 						{
-							int valueIndex = 0;
+							int variableIndex = 0;
 							foreach( SerializedProperty iterator in property.EnumerateDirectChildren() )
-								values[valueIndex++] = CopyValue( iterator );
+							{
+								variables[variableIndex] = iterator.name;
+								values[variableIndex++] = CopyValue( iterator );
+							}
 						}
 
-						return new GenericObjectClipboard( type, values );
+						return new GenericObjectClipboard( type, variables, values );
 					}
 					else
 						return null;
@@ -429,11 +474,27 @@ namespace InspectPlusNamespace
 					else if( property.hasChildren )
 					{
 						GenericObjectClipboard obj = (GenericObjectClipboard) clipboard;
-						if( obj.values.Length > 0 )
+						if( obj.variables.Length > 0 )
 						{
-							int valueIndex = 0;
+							int variableIndex = 0;
 							foreach( SerializedProperty iterator in property.EnumerateDirectChildren() )
-								PasteValue( iterator, obj.values[valueIndex++], false );
+							{
+								string variable = iterator.name;
+
+								// Unless the target class/struct's variables has changed, this if condition will always
+								// be true and we won't have to call Array.IndexOf at all
+								if( variableIndex < obj.variables.Length && variable == obj.variables[variableIndex] )
+									PasteValue( iterator, obj.values[variableIndex++], false );
+								else
+								{
+									int _variableIndex = Array.IndexOf( obj.variables, variable );
+									if( _variableIndex >= 0 )
+									{
+										PasteValue( iterator, obj.values[_variableIndex], false );
+										variableIndex = _variableIndex + 1;
+									}
+								}
+							}
 						}
 					}
 

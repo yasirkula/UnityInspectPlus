@@ -11,6 +11,7 @@ using VectorClipboard = InspectPlusNamespace.SerializablePropertyExtensions.Vect
 using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ArrayClipboard;
 using GenericObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GenericObjectClipboard;
 using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ManagedObjectClipboard;
+using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
 
 namespace InspectPlusNamespace
 {
@@ -339,6 +340,8 @@ namespace InspectPlusNamespace
 				EditorGUILayout.TextField( GUIContent.none, ( (GenericObjectClipboard) clipboardValue ).type + " object" );
 			else if( clipboardValue is ManagedObjectClipboard )
 				EditorGUILayout.TextField( GUIContent.none, ( (ManagedObjectClipboard) clipboardValue ).type + " object (SerializeField)" );
+			else if( clipboardValue is GameObjectHierarchyClipboard )
+				EditorGUILayout.TextField( GUIContent.none, ( (GameObjectHierarchyClipboard) clipboardValue ).serializedData.Name + " (Complete GameObject)" );
 			else
 				EditorGUILayout.TextField( GUIContent.none, clipboard.RootValue.GetType().Name + " object" );
 

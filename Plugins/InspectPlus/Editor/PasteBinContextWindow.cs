@@ -7,7 +7,7 @@ namespace InspectPlusNamespace
 {
 	public class PasteBinContextWindow : EditorWindow
 	{
-		public enum PasteType { Normal = 0, ComponentAsNew = 1 };
+		public enum PasteType { Normal = 0, ComponentAsNew = 1, CompleteGameObject = 2 };
 
 		private const string SMART_PASTE_TOOLTIP = "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C";
 
@@ -95,7 +95,8 @@ namespace InspectPlusNamespace
 			for( int i = 0; i < clipboardRaw.Count; i++ )
 			{
 				if( ( pasteType == PasteType.Normal && clipboardRaw[i].CanPasteToObject( objects[0] ) ) ||
-					( pasteType == PasteType.ComponentAsNew && clipboardRaw[i].CanPasteAsNewComponent( objects[0] ) ) )
+					( pasteType == PasteType.ComponentAsNew && clipboardRaw[i].CanPasteAsNewComponent( (Component) objects[0] ) ) ||
+					( pasteType == PasteType.CompleteGameObject && clipboardRaw[i].CanPasteCompleteGameObject( (GameObject) objects[0] ) ) )
 				{
 					clipboard.Add( clipboardRaw[i] );
 					clipboardValues.Add( clipboardRaw[i].RootValue.GetClipboardObject( null ) ); // RootValue won't be affected by smart copy-paste in this case
@@ -258,7 +259,7 @@ namespace InspectPlusNamespace
 		private void OnHoveredClipboardChanged( int hoveredClipboardIndex )
 		{
 			this.hoveredClipboardIndex = hoveredClipboardIndex;
-			if( hoveredClipboardIndex < 0 || clipboard[hoveredClipboardIndex].Values.Length == 1 ) // Values.Length == 1: no meaningful tooltip
+			if( hoveredClipboardIndex < 0 || !clipboard[hoveredClipboardIndex].HasTooltip )
 				PasteBinTooltip.Hide();
 			else
 				PasteBinTooltip.Show( position, clipboard[hoveredClipboardIndex].LabelContent.tooltip );
@@ -279,7 +280,8 @@ namespace InspectPlusNamespace
 					switch( pasteType )
 					{
 						case PasteType.Normal: clipboard[index].PasteToObject( targetObjects[j] ); break;
-						case PasteType.ComponentAsNew: clipboard[index].PasteAsNewComponent( targetObjects[j] ); break;
+						case PasteType.ComponentAsNew: clipboard[index].PasteAsNewComponent( (Component) targetObjects[j] ); break;
+						case PasteType.CompleteGameObject: Selection.activeGameObject = clipboard[index].PasteCompleteGameObject( (GameObject) targetObjects[j] ); break;
 					}
 				}
 			}

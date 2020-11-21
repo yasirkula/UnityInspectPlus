@@ -12,6 +12,11 @@ using GenericObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensio
 using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ArrayClipboard;
 using VectorClipboard = InspectPlusNamespace.SerializablePropertyExtensions.VectorClipboard;
 using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ManagedObjectClipboard;
+using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
+#if UNITY_2018_3_OR_NEWER
+using PrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStage;
+using PrefabStageUtility = UnityEditor.Experimental.SceneManagement.PrefabStageUtility;
+#endif
 
 namespace InspectPlusNamespace
 {
@@ -27,7 +32,8 @@ namespace InspectPlusNamespace
 			Array = 8, GenericObject = 9,
 			Vector = 10, Color = 11,
 			Long = 12, Double = 13, String = 14,
-			AnimationCurve = 15, Gradient = 16
+			AnimationCurve = 15, Gradient = 16,
+			GameObjectHierarchy = 17
 		};
 
 		public abstract class IPObject
@@ -246,19 +252,23 @@ namespace InspectPlusNamespace
 			public IPGenericObject( SerializedClipboard root, string name, GenericObjectClipboard value, Object source ) : base( root, name )
 			{
 				Type = value.type;
-				Children = new IPObject[value.values.Length];
+				Children = new IPObject[value.variables.Length];
 
-				for( int i = 0; i < value.values.Length; i++ )
-					Children[i] = root.ConvertClipboardObjectToIPObject( value.values[i], null, source );
+				for( int i = 0; i < value.variables.Length; i++ )
+					Children[i] = root.ConvertClipboardObjectToIPObject( value.values[i], value.variables[i], source );
 			}
 
 			public override object GetClipboardObject( Object context )
 			{
-				object[] values = new object[Children != null ? Children.Length : 0];
-				for( int i = 0; i < values.Length; i++ )
+				string[] variables = new string[Children != null ? Children.Length : 0];
+				object[] values = new object[variables.Length];
+				for( int i = 0; i < variables.Length; i++ )
+				{
+					variables[i] = Children[i].Name;
 					values[i] = Children[i].GetClipboardObject( context );
+				}
 
-				return new GenericObjectClipboard( Type, values );
+				return new GenericObjectClipboard( Type, variables, values );
 			}
 
 			public override void Serialize( BinaryWriter writer )
@@ -464,7 +474,7 @@ namespace InspectPlusNamespace
 			private NestedReference[] DeserializeNestedReferences( BinaryReader reader )
 			{
 				int arraySize = reader.ReadInt32();
-				if( arraySize == 0 )
+				if( arraySize <= 0 )
 					return null;
 
 				NestedReference[] result = new NestedReference[arraySize];
@@ -527,183 +537,210 @@ namespace InspectPlusNamespace
 
 		public abstract class IPUnityObject : IPObjectWithType
 		{
+			[Serializable]
+			public struct PathComponent
+			{
+				private const int PATH_INDEX_THIS_OBJECT = -44566; // Equivalent of ./
+				private const int PATH_INDEX_PARENT_OBJECT = -55677; // Equivalent of ../
+
+				// If there are multiple siblings with the same name, this object's sibling index is stored in Index
+				public string Name;
+				public int Index;
+
+				public bool PointsToSelf { get { return string.IsNullOrEmpty( Name ) && Index == PATH_INDEX_THIS_OBJECT; } }
+				public bool PointsToParent { get { return string.IsNullOrEmpty( Name ) && Index == PATH_INDEX_PARENT_OBJECT; } }
+
+				public PathComponent( string name, int index )
+				{
+					Name = name;
+					Index = index;
+				}
+
+				public PathComponent( Transform source )
+				{
+					Name = source.name;
+					Index = GetIndexOfTransformByName( source );
+				}
+
+				public PathComponent( bool pointsToSelfOrParent ) // false: self, true: parent
+				{
+					Name = null;
+					Index = pointsToSelfOrParent ? PATH_INDEX_PARENT_OBJECT : PATH_INDEX_THIS_OBJECT;
+				}
+			}
+
 			public string ObjectName;
-			public string Path;
-			public string RelativePath;
+
+			public PathComponent[] Path;
+			public PathComponent[] RelativePath;
+
+			// For serialized Components, this value holds the index of the Component among all Components of the same type in the GameObject
+			public int ComponentIndex;
 
 			protected IPUnityObject( SerializedClipboard root ) : base( root ) { }
-			protected IPUnityObject( SerializedClipboard root, string name, Type type ) : base( root, name, type ) { }
+			protected IPUnityObject( SerializedClipboard root, Object value, Object source ) : base( root, null, value.GetType() )
+			{
+				if( value && value is Component )
+					ComponentIndex = GetIndexOfComponentByType( (Component) value, ( (Component) value ).GetComponents<Component>() );
+
+				// Calculate RelativePath
+				if( !source || !value || ( !( source is Component ) && !( source is GameObject ) ) || ( !( value is Component ) && !( value is GameObject ) ) )
+					return;
+
+				Transform sourceTransform = source is Component ? ( (Component) source ).transform : ( (GameObject) source ).transform;
+				Transform targetTransform = value is Component ? ( (Component) value ).transform : ( (GameObject) value ).transform;
+				if( sourceTransform == targetTransform )
+					RelativePath = new PathComponent[1] { new PathComponent( false ) };
+				else if( sourceTransform.root == targetTransform.root )
+				{
+					List<PathComponent> pathComponents = new List<PathComponent>( 5 );
+					while( !targetTransform.IsChildOf( sourceTransform ) )
+					{
+						pathComponents.Add( new PathComponent( true ) );
+						sourceTransform = sourceTransform.parent;
+					}
+
+					int insertIndex = pathComponents.Count;
+					while( targetTransform != sourceTransform )
+					{
+						pathComponents.Insert( insertIndex, new PathComponent( targetTransform ) );
+						targetTransform = targetTransform.parent;
+					}
+
+					RelativePath = pathComponents.ToArray();
+				}
+			}
 
 			public override object GetClipboardObject( Object context )
 			{
 				base.GetClipboardObject( context );
 
-				// Try finding the object with RelativePath first
-				return ResolveRelativePath( context, RelativePath, serializedType );
+				// Try finding the object with RelativePath
+				if( !InspectPlusSettings.Instance.SmartCopyPaste )
+					return null;
+
+				if( RelativePath == null || RelativePath.Length == 0 || !context || ( !( context is Component ) && !( context is GameObject ) ) )
+					return null;
+
+				Transform sourceTransform = context is Component ? ( (Component) context ).transform : ( (GameObject) context ).transform;
+				if( RelativePath.Length == 1 && RelativePath[0].PointsToSelf )
+					return GetTargetObjectFromTransform( sourceTransform );
+
+				int index = 0;
+				for( ; index < RelativePath.Length && RelativePath[index].PointsToParent; index++ )
+				{
+					sourceTransform = sourceTransform.parent;
+					if( !sourceTransform )
+						return null;
+				}
+
+				return TraverseHierarchyRecursively( sourceTransform, RelativePath, index );
 			}
 
 			public override void Serialize( BinaryWriter writer )
 			{
 				base.Serialize( writer );
 				SerializeString( writer, ObjectName );
-				SerializeString( writer, Path );
-				SerializeString( writer, RelativePath );
+				SerializePathComponents( writer, Path );
+				SerializePathComponents( writer, RelativePath );
+				writer.Write( ComponentIndex );
 			}
 
 			public override void Deserialize( BinaryReader reader )
 			{
 				base.Deserialize( reader );
 				ObjectName = DeserializeString( reader );
-				Path = DeserializeString( reader );
-				RelativePath = DeserializeString( reader );
+				Path = DeserializePathComponents( reader );
+				RelativePath = DeserializePathComponents( reader );
+				ComponentIndex = reader.ReadInt32();
 			}
 
-			protected string CalculateRelativePath( Object source, Object context, string targetPath = null )
+			private void SerializePathComponents( BinaryWriter writer, PathComponent[] pathComponents )
 			{
-				if( !InspectPlusSettings.Instance.SmartCopyPaste )
-					return null;
-
-				if( !source || !context || ( !( source is Component ) && !( source is GameObject ) ) || ( !( context is Component ) && !( context is GameObject ) ) )
-					return null;
-
-				Transform sourceTransform = source is Component ? ( (Component) source ).transform : ( (GameObject) source ).transform;
-				Transform targetTransform = context is Component ? ( (Component) context ).transform : ( (GameObject) context ).transform;
-				if( sourceTransform == targetTransform )
-					return "./";
-
-				if( sourceTransform.root != targetTransform.root )
-					return null;
-
-				if( targetTransform.IsChildOf( sourceTransform ) )
-				{
-					string _result = targetTransform.name;
-					while( targetTransform.parent != sourceTransform )
-					{
-						targetTransform = targetTransform.parent;
-						_result = string.Concat( targetTransform.name, "/", _result );
-					}
-
-					return _result;
-				}
-
-				if( sourceTransform.IsChildOf( targetTransform ) )
-				{
-					string _result = "../";
-					while( sourceTransform.parent != targetTransform )
-					{
-						sourceTransform = sourceTransform.parent;
-						_result += "../";
-					}
-
-					return _result;
-				}
-
-				// Credit: https://stackoverflow.com/a/9042938/2373034
-				string sourcePath = CalculatePath( sourceTransform );
-				if( string.IsNullOrEmpty( targetPath ) )
-					targetPath = CalculatePath( targetTransform );
-
-				int commonPrefixEndIndex = 0;
-				for( int i = 0; i < targetPath.Length && i < sourcePath.Length && targetPath[i] == sourcePath[i]; i++ )
-				{
-					if( targetPath[i] == '/' )
-						commonPrefixEndIndex = i;
-				}
-
-				string result = "../";
-				for( int i = commonPrefixEndIndex + 1; i < sourcePath.Length; i++ )
-				{
-					if( sourcePath[i] == '/' )
-						result += "../";
-				}
-
-				return result + targetPath.Substring( commonPrefixEndIndex + 1 );
-			}
-
-			protected Object ResolveRelativePath( Object source, string relativePath, IPType targetType )
-			{
-				if( !InspectPlusSettings.Instance.SmartCopyPaste )
-					return null;
-
-				if( string.IsNullOrEmpty( relativePath ) || !source || ( !( source is Component ) && !( source is GameObject ) ) )
-					return null;
-
-				Transform result = source is Component ? ( (Component) source ).transform : ( (GameObject) source ).transform;
-				if( relativePath != "./" ) // "./" means RelativePath points to the target object itself
-				{
-					int index = 0;
-					while( index < relativePath.Length && relativePath.StartsWith( "../" ) )
-					{
-						result = result.parent;
-						if( !result )
-							return null;
-
-						index += 3;
-					}
-
-					while( index < relativePath.Length )
-					{
-						int separatorIndex = relativePath.IndexOf( '/', index );
-						if( separatorIndex < 0 )
-							separatorIndex = relativePath.Length;
-
-						result = result.Find( relativePath.Substring( index, separatorIndex - index ) );
-						if( !result )
-							return null;
-
-						index = separatorIndex + 1;
-					}
-				}
-
-				return GetObjectOfTypeFromTransform( result, targetType );
-			}
-
-			protected Object GetObjectOfTypeFromTransform( Transform source, IPType type )
-			{
-				if( type.Name == "GameObject" )
-					return source.gameObject;
+				if( pathComponents == null || pathComponents.Length == 0 )
+					writer.Write( 0 );
 				else
 				{
-					Component[] components = source.GetComponents<Component>();
-					for( int i = 0; i < components.Length; i++ )
+					writer.Write( pathComponents.Length );
+
+					for( int i = 0; i < pathComponents.Length; i++ )
 					{
-						if( components[i].GetType().Name == type.Name )
-						{
-							if( type.Type == null || type.Type == components[i].GetType() )
-								return components[i];
-						}
+						SerializeString( writer, pathComponents[i].Name );
+						writer.Write( pathComponents[i].Index );
 					}
 				}
-
-				return null;
 			}
 
-			protected string CalculatePath( Transform transform )
+			private PathComponent[] DeserializePathComponents( BinaryReader reader )
 			{
-				string result = transform.name;
+				int arraySize = reader.ReadInt32();
+				if( arraySize <= 0 )
+					return null;
 
-#if UNITY_2018_3_OR_NEWER
-				UnityEditor.Experimental.SceneManagement.PrefabStage openPrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
-				if( openPrefabStage != null && openPrefabStage.IsPartOfPrefabContents( transform.gameObject ) )
+				PathComponent[] result = new PathComponent[arraySize];
+				for( int i = 0; i < arraySize; i++ )
 				{
-					Transform prefabStageRoot = openPrefabStage.prefabContentsRoot.transform;
-					while( transform.parent && transform != prefabStageRoot )
-					{
-						transform = transform.parent;
-						result = string.Concat( transform.name, "/", result );
-					}
+					string name = DeserializeString( reader );
+					result[i] = new PathComponent( name, reader.ReadInt32() );
 				}
-				else
-#endif
+
+				return result;
+			}
+
+			protected Object TraverseHierarchyRecursively( Transform obj, PathComponent[] path, int pathIndex )
+			{
+				if( pathIndex >= path.Length )
+					return GetTargetObjectFromTransform( obj );
+
+				Object result = null;
+				int siblingIndex = -1;
+				for( int i = 0; i < obj.childCount; i++ )
 				{
-					while( transform.parent )
+					Transform child = obj.GetChild( i );
+					if( child.name == path[pathIndex].Name )
 					{
-						transform = transform.parent;
-						result = string.Concat( transform.name, "/", result );
+						Object _result = TraverseHierarchyRecursively( child, path, pathIndex + 1 );
+						if( _result )
+							result = _result;
+
+						if( ++siblingIndex >= path[pathIndex].Index && result )
+							break;
 					}
 				}
 
 				return result;
+			}
+
+			private Object GetTargetObjectFromTransform( Transform source )
+			{
+				if( serializedType.Name == "GameObject" )
+					return source.gameObject;
+				else
+				{
+					Component[] components = source.GetComponents<Component>();
+					Component targetComponent = null;
+
+					if( serializedType.Type != null && typeof( Component ).IsAssignableFrom( serializedType.Type ) )
+					{
+						int componentIndex;
+						targetComponent = FindComponentOfTypeClosestToIndex( serializedType.Type, components, ComponentIndex, out componentIndex );
+					}
+					else
+					{
+						int componentIndex = -1;
+						for( int i = 0; i < components.Length; i++ )
+						{
+							if( components[i] && components[i].GetType().Name == serializedType.Name )
+							{
+								targetComponent = components[i];
+								if( ++componentIndex >= ComponentIndex )
+									break;
+							}
+						}
+					}
+
+					return targetComponent;
+				}
 			}
 		}
 
@@ -712,44 +749,52 @@ namespace InspectPlusNamespace
 			public string SceneName;
 
 			public IPSceneObject( SerializedClipboard root ) : base( root ) { }
-			public IPSceneObject( SerializedClipboard root, Object value, Object source ) : base( root, null, value.GetType() )
+			public IPSceneObject( SerializedClipboard root, Object value, Object source ) : base( root, value, source )
 			{
 				ObjectName = value.name;
 
 				if( value is Component || value is GameObject )
 				{
 					Transform transform = value is Component ? ( (Component) value ).transform : ( (GameObject) value ).transform;
-
+					Transform pathIterateTarget = null;
 #if UNITY_2018_3_OR_NEWER
-					UnityEditor.Experimental.SceneManagement.PrefabStage openPrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
-					if( openPrefabStage == null || !openPrefabStage.IsPartOfPrefabContents( transform.gameObject ) )
+					PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+					if( openPrefabStage != null && openPrefabStage.IsPartOfPrefabContents( transform.gameObject ) )
+						pathIterateTarget = openPrefabStage.prefabContentsRoot.transform.parent;
+					else
 #endif
 					SceneName = transform.gameObject.scene.name;
 
-					Path = CalculatePath( transform );
-					RelativePath = CalculateRelativePath( source, value, Path );
+					// Calculate Path
+					List<PathComponent> pathComponents = new List<PathComponent>( 5 );
+					while( transform != pathIterateTarget )
+					{
+						pathComponents.Insert( 0, new PathComponent( transform ) );
+						transform = transform.parent;
+					}
+
+					Path = pathComponents.ToArray();
 				}
 			}
 
 			public override object GetClipboardObject( Object context )
 			{
-				// First, try to resolve the RelativePath. We can't cache it as it depends on the target
+				// First, try to resolve the RelativePath
 				object baseResult = base.GetClipboardObject( context );
 				if( baseResult != null && !baseResult.Equals( null ) )
 					return baseResult;
 
-				if( !string.IsNullOrEmpty( Path ) )
+				if( Path != null && Path.Length > 0 )
 				{
 					// Search all open scenes to find the object reference
 					// Don't use GameObject.Find because it can't find inactive objects
-					string[] pathComponents = Path.Split( '/' );
 
 #if UNITY_2018_3_OR_NEWER
 					// Search the currently open prefab stage (if any)
-					UnityEditor.Experimental.SceneManagement.PrefabStage openPrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStageUtility.GetCurrentPrefabStage();
+					PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
 					if( openPrefabStage != null )
 					{
-						Object result = FindObjectInScene( new GameObject[1] { openPrefabStage.prefabContentsRoot }, pathComponents );
+						Object result = FindObjectInScene( new GameObject[1] { openPrefabStage.prefabContentsRoot } );
 						if( result )
 							return result;
 					}
@@ -767,7 +812,7 @@ namespace InspectPlusNamespace
 					// Try finding the object in the scene with matching name first
 					if( originalSceneIndex >= 0 )
 					{
-						Object result = FindObjectInScene( scenes[originalSceneIndex].GetRootGameObjects(), pathComponents );
+						Object result = FindObjectInScene( scenes[originalSceneIndex].GetRootGameObjects() );
 						if( result )
 							return result;
 					}
@@ -777,7 +822,7 @@ namespace InspectPlusNamespace
 					{
 						if( i != originalSceneIndex )
 						{
-							Object result = FindObjectInScene( scenes[i].GetRootGameObjects(), pathComponents );
+							Object result = FindObjectInScene( scenes[i].GetRootGameObjects() );
 							if( result )
 								return result;
 						}
@@ -812,34 +857,24 @@ namespace InspectPlusNamespace
 				SceneName = DeserializeString( reader );
 			}
 
-			private Object FindObjectInScene( GameObject[] sceneRoot, string[] pathComponents )
+			private Object FindObjectInScene( GameObject[] sceneRoot )
 			{
+				Object result = null;
+				int siblingIndex = -1;
 				for( int i = 0; i < sceneRoot.Length; i++ )
 				{
-					Object result = TraverseHierarchyRecursively( sceneRoot[i].transform, pathComponents, 0 );
-					if( result )
-						return result;
+					if( sceneRoot[i].transform.name == Path[0].Name )
+					{
+						Object _result = TraverseHierarchyRecursively( sceneRoot[i].transform, Path, 1 );
+						if( _result )
+							result = _result;
+
+						if( ++siblingIndex >= Path[0].Index && result )
+							break;
+					}
 				}
 
-				return null;
-			}
-
-			private Object TraverseHierarchyRecursively( Transform obj, string[] path, int pathIndex )
-			{
-				if( obj.name != path[pathIndex] )
-					return null;
-
-				if( pathIndex == path.Length - 1 )
-					return GetObjectOfTypeFromTransform( obj, serializedType );
-
-				for( int i = obj.childCount - 1; i >= 0; i-- )
-				{
-					Object result = TraverseHierarchyRecursively( obj.GetChild( i ), path, pathIndex + 1 );
-					if( result )
-						return result;
-				}
-
-				return null;
+				return result;
 			}
 		}
 
@@ -857,11 +892,10 @@ namespace InspectPlusNamespace
 			private Object m_asset;
 
 			public IPAsset( SerializedClipboard root ) : base( root ) { }
-			public IPAsset( SerializedClipboard root, Object value, Object source ) : base( root, null, value.GetType() )
+			public IPAsset( SerializedClipboard root, Object value, Object source ) : base( root, value, source )
 			{
 				ObjectName = value.name;
-				Path = AssetDatabase.GetAssetPath( value );
-				RelativePath = CalculateRelativePath( source, value );
+				Path = new PathComponent[1] { new PathComponent( AssetDatabase.GetAssetPath( value ), 0 ) };
 				Value = EditorJsonUtility.ToJson( new AssetWrapper() { value = value } );
 			}
 
@@ -885,9 +919,9 @@ namespace InspectPlusNamespace
 					return wrapper.value;
 				}
 
-				if( !string.IsNullOrEmpty( Path ) )
+				if( Path != null && Path.Length > 0 )
 				{
-					Object result = FindAssetAtPath( Path );
+					Object result = FindAssetAtPath( Path[0].Name );
 					if( result )
 					{
 						m_asset = result;
@@ -934,11 +968,8 @@ namespace InspectPlusNamespace
 						for( int i = 0; i < assets.Length; i++ )
 						{
 							Object asset = assets[i];
-							if( asset.name == ObjectName && asset.GetType().Name == serializedType.Name )
-							{
-								if( serializedType.Type == null || serializedType.Type == asset.GetType() )
-									return asset;
-							}
+							if( asset.name == ObjectName && asset.GetType().Name == serializedType.Name && ( serializedType.Type == null || serializedType.Type == asset.GetType() ) )
+								return asset;
 						}
 					}
 				}
@@ -1000,6 +1031,470 @@ namespace InspectPlusNamespace
 			{
 				base.Deserialize( reader );
 				AssetIndex = reader.ReadInt32();
+			}
+		}
+
+		public class IPGameObjectHierarchy : IPObject
+		{
+			[Serializable]
+			public struct ComponentInfo
+			{
+				public SerializedClipboard Component;
+				public bool Enabled;
+				public int HideFlags;
+				public int Index;
+
+				public ComponentInfo( SerializedClipboard component, bool enabled, int hideFlags, int index )
+				{
+					Component = component;
+					Enabled = enabled;
+					HideFlags = hideFlags;
+					Index = index;
+				}
+			}
+
+			[Serializable]
+			public struct RemovedComponentInfo
+			{
+				public IPType Type;
+				public int Index;
+
+				public RemovedComponentInfo( IPType type, int index )
+				{
+					Type = type;
+					Index = index;
+				}
+			}
+
+			public struct ComponentToPaste
+			{
+				public readonly SerializedClipboard SerializedComponent;
+				public readonly Component TargetComponent;
+
+				public ComponentToPaste( SerializedClipboard serializedComponent, Component targetComponent )
+				{
+					SerializedComponent = serializedComponent;
+					TargetComponent = targetComponent;
+				}
+			}
+
+			public bool IsActive;
+			public int Layer;
+			public string Tag;
+			public int StaticFlags;
+			public int HideFlags;
+
+			public SerializedClipboard PrefabAsset;
+			public bool IsPartOfParentPrefab;
+
+			public ComponentInfo[] Components;
+			public RemovedComponentInfo[] RemovedComponents;
+
+			public IPGameObjectHierarchy[] Children;
+
+			public IPGameObjectHierarchy( SerializedClipboard root ) : base( root ) { }
+			public IPGameObjectHierarchy( SerializedClipboard root, GameObjectHierarchyClipboard value ) : base( root, value.source.name )
+			{
+				GameObject gameObject = value.source;
+				Transform transform = gameObject.transform;
+
+				IsActive = gameObject.activeSelf;
+				Layer = gameObject.layer;
+				Tag = gameObject.tag;
+				StaticFlags = (int) GameObjectUtility.GetStaticEditorFlags( gameObject );
+				HideFlags = (int) gameObject.hideFlags;
+
+				bool smartCopyPasteEnabled = InspectPlusSettings.Instance.SmartCopyPaste;
+				try
+				{
+					// Smart copy-paste is mandatory for copy&pasting GameObject hierarchies in order to
+					// be able to restore references between Components properly
+					InspectPlusSettings.Instance.SmartCopyPaste = true;
+
+					// Fetch components
+					List<Component> _components = new List<Component>( 6 );
+					gameObject.GetComponents( _components );
+
+					for( int i = _components.Count - 1; i >= 0; i-- )
+					{
+						if( !_components[i] )
+						{
+							_components.RemoveAt( i );
+							continue;
+						}
+					}
+
+					GameObject prefab = null;
+#if UNITY_2018_3_OR_NEWER
+					if( PrefabUtility.GetPrefabInstanceStatus( gameObject ) == PrefabInstanceStatus.Connected )
+						prefab = PrefabUtility.GetCorrespondingObjectFromSource( gameObject ) as GameObject;
+#else
+					PrefabType prefabType = PrefabUtility.GetPrefabType( gameObject );
+					if( prefabType == PrefabType.ModelPrefabInstance || prefabType == PrefabType.PrefabInstance )
+						prefab = PrefabUtility.GetPrefabParent( gameObject ) as GameObject;
+#endif
+
+					if( !prefab )
+						RemovedComponents = new RemovedComponentInfo[0];
+					else
+					{
+						Component[] prefabComponents = prefab.GetComponents<Component>();
+						List<Component> _removedComponents = new List<Component>( prefabComponents ); // Components that are removed from the instance
+
+						int newComponentsStartIndex = _components.Count;
+						for( int i = _components.Count - 1; i >= 0; i-- )
+						{
+#if UNITY_2018_3_OR_NEWER
+							Component originalComponent = PrefabUtility.GetCorrespondingObjectFromSource( _components[i] ) as Component;
+#else
+							Component originalComponent = PrefabUtility.GetPrefabParent( _components[i] ) as Component;
+#endif
+							if( !originalComponent || !_removedComponents.Remove( originalComponent ) )
+							{
+								// Move Components that are newly added to the instance to the end of the list
+								_components.Insert( newComponentsStartIndex--, _components[i] );
+								_components.RemoveAt( i );
+							}
+						}
+
+						for( int i = _removedComponents.Count - 1; i >= 0; i-- )
+						{
+							if( !_removedComponents[i] || _removedComponents[i].GetType() == typeof( Transform ) )
+								_removedComponents.RemoveAt( i );
+						}
+
+						RemovedComponents = new RemovedComponentInfo[_removedComponents.Count];
+						for( int i = 0; i < _removedComponents.Count; i++ )
+							RemovedComponents[i] = new RemovedComponentInfo( new IPType( root, _removedComponents[i].GetType() ), GetIndexOfComponentByType( _removedComponents[i], prefabComponents ) );
+					}
+
+					Components = new ComponentInfo[_components.Count];
+					for( int i = 0; i < _components.Count; i++ )
+					{
+						SerializedClipboard serializedComponent = new SerializedClipboard( _components[i], _components[i], null );
+						bool componentEnabled = EditorUtility.GetObjectEnabled( _components[i] ) != 0;
+						Components[i] = new ComponentInfo( serializedComponent, componentEnabled, (int) _components[i].hideFlags, GetIndexOfComponentByType( _components[i], _components ) );
+					}
+
+					// Store prefab asset (if it is a prefab instance's root GameObject)
+					if( prefab )
+					{
+#if UNITY_2018_3_OR_NEWER
+						GameObject prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot( gameObject );
+#else
+						GameObject prefabRoot = PrefabUtility.FindPrefabRoot( gameObject );
+#endif
+						if( prefabRoot == gameObject )
+						{
+							// If child objects aren't copied and this prefab has child objects, don't save the prefab data
+							if( value.includeChildren || prefab.transform.childCount == 0 )
+								PrefabAsset = new SerializedClipboard( prefab, null, null );
+						}
+						else if( prefabRoot && transform.parent )
+						{
+#if UNITY_2018_3_OR_NEWER
+							if( prefabRoot == PrefabUtility.GetOutermostPrefabInstanceRoot( transform.parent.gameObject ) )
+#else
+							if( prefabRoot == PrefabUtility.FindPrefabRoot( transform.parent.gameObject ) )
+#endif
+								IsPartOfParentPrefab = true;
+						}
+					}
+
+					// Fetch children
+					if( value.includeChildren )
+					{
+						Children = new IPGameObjectHierarchy[transform.childCount];
+						for( int i = 0; i < Children.Length; i++ )
+							Children[i] = new IPGameObjectHierarchy( root, new GameObjectHierarchyClipboard( transform.GetChild( i ).gameObject, true ) );
+					}
+				}
+				finally
+				{
+					InspectPlusSettings.Instance.SmartCopyPaste = smartCopyPasteEnabled;
+				}
+			}
+
+			public override object GetClipboardObject( Object context )
+			{
+				return new GameObjectHierarchyClipboard( this );
+			}
+
+			public override void Serialize( BinaryWriter writer )
+			{
+				base.Serialize( writer );
+
+				writer.Write( IsActive );
+				writer.Write( Layer );
+				writer.Write( StaticFlags );
+				writer.Write( HideFlags );
+				SerializeString( writer, Tag != "Untagged" ? Tag : null );
+
+				if( PrefabAsset != null )
+				{
+					writer.Write( true );
+					PrefabAsset.Serialize( writer );
+				}
+				else
+					writer.Write( false );
+
+				writer.Write( IsPartOfParentPrefab );
+
+				writer.Write( Components.Length );
+				for( int i = 0; i < Components.Length; i++ )
+				{
+					Components[i].Component.Serialize( writer );
+					writer.Write( Components[i].Enabled );
+					writer.Write( Components[i].HideFlags );
+					writer.Write( Components[i].Index );
+				}
+
+				writer.Write( RemovedComponents.Length );
+				for( int i = 0; i < RemovedComponents.Length; i++ )
+				{
+					RemovedComponents[i].Type.Serialize( writer );
+					writer.Write( RemovedComponents[i].Index );
+				}
+
+				root.SerializeArray( writer, Children );
+			}
+
+			public override void Deserialize( BinaryReader reader )
+			{
+				base.Deserialize( reader );
+
+				IsActive = reader.ReadBoolean();
+				Layer = reader.ReadInt32();
+				StaticFlags = reader.ReadInt32();
+				HideFlags = reader.ReadInt32();
+
+				Tag = DeserializeString( reader );
+				if( string.IsNullOrEmpty( Tag ) )
+					Tag = "Untagged";
+
+				if( reader.ReadBoolean() )
+					PrefabAsset = new SerializedClipboard( reader );
+
+				IsPartOfParentPrefab = reader.ReadBoolean();
+
+				Components = new ComponentInfo[reader.ReadInt32()];
+				for( int i = 0; i < Components.Length; i++ )
+				{
+					SerializedClipboard component = new SerializedClipboard( reader );
+					bool enabled = reader.ReadBoolean();
+					int hideFlags = reader.ReadInt32();
+					Components[i] = new ComponentInfo( component, enabled, hideFlags, reader.ReadInt32() );
+				}
+
+				RemovedComponents = new RemovedComponentInfo[reader.ReadInt32()];
+				for( int i = 0; i < RemovedComponents.Length; i++ )
+				{
+					IPType type = new IPType( root );
+					type.Deserialize( reader );
+					RemovedComponents[i] = new RemovedComponentInfo( type, reader.ReadInt32() );
+				}
+
+				Children = root.DeserializeArray<IPGameObjectHierarchy>( reader );
+			}
+
+			public GameObject PasteHierarchy( Transform parent )
+			{
+				if( parent && AssetDatabase.Contains( parent ) )
+				{
+					Debug.LogError( "Can't paste Complete GameObject to a prefab or model Asset: " + parent, parent );
+					return null;
+				}
+
+				List<GameObject> hierarchy = new List<GameObject>( Children != null && Children.Length > 0 ? 32 : 0 );
+				List<ComponentToPaste[]> hierarchyComponents = new List<ComponentToPaste[]>( hierarchy.Capacity );
+
+				// Recursively create child GameObjects (and their components). Creating all Components before pasting their
+				// values allows us to restore references between Components (since all the Components will exist while
+				// pasting the Component values)
+				GameObject rootGameObject = null;
+				CreateGameObjectsRecursively( parent, ref rootGameObject, hierarchy, hierarchyComponents );
+
+				// Paste component values
+				bool smartCopyPasteEnabled = InspectPlusSettings.Instance.SmartCopyPaste;
+				try
+				{
+					// Smart copy-paste is mandatory for copy&pasting GameObject hierarchies in order to
+					// be able to restore references between Components properly
+					InspectPlusSettings.Instance.SmartCopyPaste = true;
+
+					for( int i = 0; i < hierarchyComponents.Count; i++ )
+					{
+						ComponentToPaste[] componentsToPaste = hierarchyComponents[i];
+						for( int j = 0; j < componentsToPaste.Length; j++ )
+							componentsToPaste[j].SerializedComponent.PasteToObject( componentsToPaste[j].TargetComponent, false );
+					}
+				}
+				finally
+				{
+					InspectPlusSettings.Instance.SmartCopyPaste = smartCopyPasteEnabled;
+				}
+
+				return hierarchy[0];
+			}
+
+			private void CreateGameObjectsRecursively( Transform parent, ref GameObject gameObject, List<GameObject> hierarchy, List<ComponentToPaste[]> hierarchyComponents )
+			{
+				bool isPrefabInstance = gameObject;
+				if( !isPrefabInstance )
+				{
+					GameObject prefabAsset = PrefabAsset == null ? null : PrefabAsset.RootValue.GetClipboardObject( null ) as GameObject;
+					if( !prefabAsset )
+					{
+						// Create a new GameObject
+						gameObject = new GameObject( Name );
+					}
+					else
+					{
+						// Instantiate the source prefab asset
+						gameObject = PrefabUtility.InstantiatePrefab( prefabAsset ) as GameObject;
+						gameObject.name = Name;
+
+						isPrefabInstance = true;
+					}
+
+					Undo.RegisterCreatedObjectUndo( gameObject, "Paste Complete GameObject" );
+					if( parent )
+						Undo.SetTransformParent( gameObject.transform, parent, "Paste Complete GameObject" );
+				}
+
+				gameObject.SetActive( IsActive );
+				gameObject.layer = Layer;
+				gameObject.tag = Tag;
+				gameObject.hideFlags = (HideFlags) HideFlags;
+				GameObjectUtility.SetStaticEditorFlags( gameObject, (StaticEditorFlags) StaticFlags );
+
+				// Find the serialized components that exist in this Unity project
+				List<ComponentInfo> validComponents = new List<ComponentInfo>( Components.Length );
+				for( int i = 0; i < Components.Length; i++ )
+				{
+					IPType objectType = Components[i].Component.RootUnityObjectType;
+					if( objectType != null && objectType.Type != null && typeof( Component ).IsAssignableFrom( objectType.Type ) )
+						validComponents.Add( Components[i] );
+				}
+
+				// Destroy removed components (if any)
+				if( RemovedComponents.Length > 0 )
+				{
+					Component[] components = gameObject.GetComponents<Component>();
+					List<Component> componentsToRemove = new List<Component>( RemovedComponents.Length );
+					for( int i = 0; i < RemovedComponents.Length; i++ )
+					{
+						Type componentType = RemovedComponents[i].Type.Type;
+						if( componentType == null || !typeof( Component ).IsAssignableFrom( componentType ) )
+							continue;
+
+						int componentIndex;
+						Component componentToRemove = FindComponentOfTypeClosestToIndex( componentType, components, RemovedComponents[i].Index, out componentIndex );
+						if( componentIndex == RemovedComponents[i].Index )
+							componentsToRemove.Add( componentToRemove );
+					}
+
+					for( int i = 0; i < componentsToRemove.Count; i++ )
+						Undo.DestroyObjectImmediate( componentsToRemove[i] );
+				}
+
+				// Add any necessary components to the GameObject (but don't paste their values yet; creating all Components before pasting their
+				// values allows us to restore references between Components since all the Components will exist while pasting the Component values)
+				ComponentToPaste[] componentsToPaste = new ComponentToPaste[validComponents.Count];
+				for( int i = 0; i < validComponents.Count; i++ )
+				{
+					// We are calling GetComponents at each iteration because a component added in the previous iteration might automatically
+					// add other component(s) to the GameObject (i.e. via RequireComponent)
+					Type componentType = validComponents[i].Component.RootUnityObjectType.Type;
+					Component[] components = gameObject.GetComponents( componentType );
+
+					int componentIndex;
+					Component targetComponent = FindComponentOfTypeClosestToIndex( componentType, components, validComponents[i].Index, out componentIndex );
+
+					for( ; componentIndex < validComponents[i].Index; componentIndex++ )
+						targetComponent = Undo.AddComponent( gameObject, componentType );
+
+					// We can paste the values of enabled and hideFlags immediately, though
+					targetComponent.hideFlags = (HideFlags) validComponents[i].HideFlags;
+
+					// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/61f92bd79ae862c4465d35270f9d1d57befd1761/Editor/Mono/EditorGUI.cs#L5092-L5164
+					SerializedProperty enabledProperty = new SerializedObject( targetComponent ).FindProperty( "m_Enabled" );
+					if( enabledProperty != null && enabledProperty.propertyType == SerializedPropertyType.Boolean )
+					{
+						enabledProperty.boolValue = validComponents[i].Enabled;
+						enabledProperty.serializedObject.ApplyModifiedProperties();
+					}
+					else if( EditorUtility.GetObjectEnabled( targetComponent ) != -1 )
+						EditorUtility.SetObjectEnabled( targetComponent, validComponents[i].Enabled );
+
+					componentsToPaste[i] = new ComponentToPaste( validComponents[i].Component, targetComponent );
+				}
+
+				hierarchy.Add( gameObject );
+				hierarchyComponents.Add( componentsToPaste );
+
+				// Recursively create child GameObjects (and their components)
+				if( Children != null )
+				{
+					if( !isPrefabInstance )
+					{
+						for( int i = 0; i < Children.Length; i++ )
+						{
+							GameObject childGO = null;
+							Children[i].CreateGameObjectsRecursively( gameObject.transform, ref childGO, hierarchy, hierarchyComponents );
+						}
+					}
+					else
+					{
+						List<IPGameObjectHierarchy> childrenList = new List<IPGameObjectHierarchy>( Children );
+
+						// First, find child GameObjects that were instantiated with this prefab and remove them from children list
+						for( int i = 0; i < gameObject.transform.childCount; i++ )
+						{
+							GameObject childGO = gameObject.transform.GetChild( i ).gameObject;
+							string childName = childGO.name;
+							for( int j = 0; j < childrenList.Count; j++ )
+							{
+								if( childrenList[j].Name == childName && childrenList[j].IsPartOfParentPrefab )
+								{
+									childrenList[j].CreateGameObjectsRecursively( gameObject.transform, ref childGO, hierarchy, hierarchyComponents );
+									childrenList.RemoveAt( j );
+									break;
+								}
+							}
+						}
+
+						// Remaining GameObjects are not part of this instantiated prefab, they will be created from scratch
+						for( int i = 0; i < childrenList.Count; i++ )
+						{
+							GameObject childGO = null;
+							childrenList[i].CreateGameObjectsRecursively( gameObject.transform, ref childGO, hierarchy, hierarchyComponents );
+
+							// Preserve sibling index order
+							if( childGO )
+								childGO.transform.SetSiblingIndex( Array.IndexOf( Children, childrenList[i] ) );
+						}
+					}
+				}
+			}
+
+			public void PrintHierarchy( StringBuilder sb )
+			{
+				PrintHierarchyRecursively( sb, 0 );
+			}
+
+			private void PrintHierarchyRecursively( StringBuilder sb, int depth )
+			{
+				for( int i = 0; i < depth; i++ )
+					sb.Append( "   " );
+
+				sb.AppendLine( Name );
+
+				if( Children != null )
+				{
+					for( int i = 0; i < Children.Length; i++ )
+						Children[i].PrintHierarchyRecursively( sb, depth + 1 );
+				}
 			}
 		}
 
@@ -1245,6 +1740,7 @@ namespace InspectPlusNamespace
 			{ typeof( IPAssetReference ), IPObjectType.AssetReference },
 			{ typeof( IPSceneObject ), IPObjectType.SceneObject },
 			{ typeof( IPSceneObjectReference ), IPObjectType.SceneObjectReference },
+			{ typeof( IPGameObjectHierarchy ), IPObjectType.GameObjectHierarchy },
 			{ typeof( IPManagedObject ), IPObjectType.ManagedObject },
 			{ typeof( IPManagedReference ), IPObjectType.ManagedReference },
 			{ typeof( IPArray ), IPObjectType.Array },
@@ -1260,6 +1756,7 @@ namespace InspectPlusNamespace
 
 		private static readonly Dictionary<Type, IPObjectType> typeToEnumLookup = new Dictionary<Type, IPObjectType>()
 		{
+			{ typeof( GameObjectHierarchyClipboard ), IPObjectType.GameObjectHierarchy },
 			{ typeof( ManagedObjectClipboard ), IPObjectType.ManagedObject },
 			{ typeof( ArrayClipboard ), IPObjectType.Array },
 			{ typeof( GenericObjectClipboard ), IPObjectType.GenericObject },
@@ -1305,6 +1802,8 @@ namespace InspectPlusNamespace
 			}
 		}
 
+		public bool HasTooltip { get { return Values.Length > 1 || RootValue is IPGameObjectHierarchy; } }
+
 		public string Label;
 		private GUIContent m_labelContent;
 		public GUIContent LabelContent
@@ -1313,8 +1812,18 @@ namespace InspectPlusNamespace
 			{
 				if( m_labelContent == null )
 				{
-					if( Values.Length == 1 )
+					if( !HasTooltip )
 						m_labelContent = new GUIContent( Label, Label );
+					else if( RootValue is IPGameObjectHierarchy )
+					{
+						StringBuilder sb = Utilities.stringBuilder;
+						sb.Length = 0;
+
+						sb.Append( "Complete GameObject Hierarchy:\n\n" );
+						( (IPGameObjectHierarchy) RootValue ).PrintHierarchy( sb );
+
+						m_labelContent = new GUIContent( Label, sb.ToString() );
+					}
 					else
 					{
 						StringBuilder sb = Utilities.stringBuilder;
@@ -1501,7 +2010,7 @@ namespace InspectPlusNamespace
 		private T[] DeserializeArray<T>( BinaryReader reader ) where T : IPObject
 		{
 			int arraySize = reader.ReadInt32();
-			if( arraySize == 0 )
+			if( arraySize <= 0 )
 				return null;
 
 			T[] result = new T[arraySize];
@@ -1540,6 +2049,7 @@ namespace InspectPlusNamespace
 			{
 				case IPObjectType.Array: return new IPArray( this, name, (ArrayClipboard) obj, source );
 				case IPObjectType.GenericObject: return new IPGenericObject( this, name, (GenericObjectClipboard) obj, source );
+				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this, (GameObjectHierarchyClipboard) obj );
 				case IPObjectType.Vector: return new IPVector( this, name, (VectorClipboard) obj );
 				case IPObjectType.Color: return new IPColor( this, name, (Color) obj );
 				case IPObjectType.Long: return new IPLong( this, name, (long) obj );
@@ -1577,6 +2087,7 @@ namespace InspectPlusNamespace
 				case IPObjectType.AssetReference: return new IPAssetReference( this );
 				case IPObjectType.SceneObject: return new IPSceneObject( this );
 				case IPObjectType.SceneObjectReference: return new IPSceneObjectReference( this );
+				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this );
 				case IPObjectType.ManagedObject: return new IPManagedObject( this );
 				case IPObjectType.ManagedReference: return new IPManagedReference( this );
 				case IPObjectType.Array: return new IPArray( this );
@@ -1627,13 +2138,21 @@ namespace InspectPlusNamespace
 			return false;
 		}
 
-		public bool CanPasteAsNewComponent( Object target )
+		public bool CanPasteAsNewComponent( Component target )
 		{
 			if( !target || ( target.hideFlags & HideFlags.NotEditable ) == HideFlags.NotEditable )
 				return false;
 
 			IPType objectType = RootUnityObjectType;
 			return objectType != null && objectType.Type != null && typeof( Component ).IsAssignableFrom( objectType.Type );
+		}
+
+		public bool CanPasteCompleteGameObject( GameObject parent )
+		{
+			if( !( RootValue is IPGameObjectHierarchy ) )
+				return false;
+
+			return !parent || !AssetDatabase.Contains( parent );
 		}
 
 		public void PasteToObject( Object target, bool logModifiedProperties = true )
@@ -1687,27 +2206,34 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		public void PasteAsNewComponent( Object target )
+		public Component PasteAsNewComponent( Component target )
 		{
 			if( !target )
-				return;
+				return null;
 
 			IPType objectType = RootUnityObjectType;
 			if( objectType == null )
-				return;
+				return null;
 
 			if( objectType.Type == null )
 			{
 				Debug.LogError( string.Concat( "Type \"", objectType.AssemblyQualifiedName, "\" doesn't exist in the project" ) );
-				return;
+				return null;
 			}
 
-			GameObject gameObject = ( (Component) target ).gameObject;
+			GameObject gameObject = target.gameObject;
 			Component newComponent = Undo.AddComponent( gameObject, objectType.Type );
 			if( newComponent )
 				PasteToObject( newComponent, false );
 			else
 				Debug.LogError( string.Concat( "Couldn't add a ", objectType.Type.FullName, " Component to ", gameObject.name ) );
+
+			return newComponent;
+		}
+
+		public GameObject PasteCompleteGameObject( GameObject parent )
+		{
+			return ( (IPGameObjectHierarchy) RootValue ).PasteHierarchy( parent ? parent.transform : null );
 		}
 		#endregion
 
@@ -1763,7 +2289,7 @@ namespace InspectPlusNamespace
 			return managedObjectsToSerialize.Count - 1;
 		}
 
-		private int GetIndexOfObjectInList<T>( T obj, ref List<T> list, bool addEntryIfNotExists ) where T : class
+		private static int GetIndexOfObjectInList<T>( T obj, ref List<T> list, bool addEntryIfNotExists ) where T : class
 		{
 			if( list == null )
 				list = new List<T>( 4 );
@@ -1779,6 +2305,85 @@ namespace InspectPlusNamespace
 
 			list.Add( obj );
 			return list.Count - 1;
+		}
+
+		// Returns sibling index of the Transform among all of its siblings with the same name
+		private static int GetIndexOfTransformByName( Transform transform )
+		{
+			string name = transform.name;
+			int siblingIndex = -1;
+			Transform parent = transform.parent;
+			if( parent )
+			{
+				for( int i = 0; i < parent.childCount; i++ )
+				{
+					Transform child = parent.GetChild( i );
+					if( child.name == name )
+					{
+						siblingIndex++;
+						if( child == transform )
+							break;
+					}
+				}
+			}
+			else
+			{
+				GameObject gameObject = transform.gameObject;
+#if UNITY_2018_3_OR_NEWER
+				PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+				if( openPrefabStage != null && openPrefabStage.IsPartOfPrefabContents( gameObject ) )
+					return 0;
+#endif
+
+				GameObject[] rootObjects = gameObject.scene.GetRootGameObjects();
+				for( int i = 0; i < rootObjects.Length; i++ )
+				{
+					if( rootObjects[i].name == name )
+					{
+						siblingIndex++;
+						if( rootObjects[i] == gameObject )
+							break;
+					}
+
+				}
+			}
+
+			return siblingIndex;
+		}
+
+		// Returns index of the Component among all Components of the same type
+		private static int GetIndexOfComponentByType( Component component, IList<Component> allComponents )
+		{
+			Type componentType = component.GetType();
+			int componentIndex = -1;
+			for( int i = 0; i < allComponents.Count; i++ )
+			{
+				if( allComponents[i] && allComponents[i].GetType() == componentType )
+				{
+					componentIndex++;
+					if( allComponents[i] == component )
+						break;
+				}
+			}
+
+			return componentIndex;
+		}
+
+		// Returns Component at specified index among all Components of the same type
+		private static Component FindComponentOfTypeClosestToIndex( Type componentType, IList<Component> allComponents, int targetComponentIndex, out int foundComponentIndex )
+		{
+			Component component = null;
+			foundComponentIndex = -1;
+			for( int i = 0; i < allComponents.Count; i++ )
+			{
+				if( allComponents[i] && allComponents[i].GetType() == componentType && ++foundComponentIndex >= targetComponentIndex )
+				{
+					component = allComponents[i];
+					break;
+				}
+			}
+
+			return component;
 		}
 
 		private static void SerializeString( BinaryWriter writer, string value )

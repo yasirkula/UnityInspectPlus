@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
 
 namespace InspectPlusNamespace
 {
@@ -11,7 +12,12 @@ namespace InspectPlusNamespace
 
 		private const string CONTEXT_COPY_LABEL = "Copy (Inspect+)";
 		private const string CONTEXT_COPY_COMPONENT_LABEL = "Copy Component (Inspect+)";
-		private const string CONTEXT_COPY_VALUE_LABEL = "Copy Value";
+		private const string CONTEXT_COPY_REFERENCE_LABEL = "Copy Reference";
+		private const string CONTEXT_COPY_GAMEOBJECT_REFERENCE_LABEL = "Copy/Reference";
+		private const string CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL = "Copy/Complete GameObject (This Object Only)";
+		private const string CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL = "Copy/Complete GameObject (Include Children)";
+		private const string CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL = "Paste/Complete GameObject";
+		private const string CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL = "Paste/Complete GameObject From Bin";
 		private const string CONTEXT_PASTE_LABEL = "Paste (Inspect+)";
 		private const string CONTEXT_PASTE_VALUES_LABEL = "Paste Values (Inspect+)";
 		private const string CONTEXT_PASTE_COMPONENT_VALUES_LABEL = "Paste Component Values (Inspect+)";
@@ -23,7 +29,7 @@ namespace InspectPlusNamespace
 
 		private static List<Object> objectsToOpenPasteBinWith;
 
-		#region Context Menu Buttons
+		#region New Tab/Window Buttons
 		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, priority = 49 )]
 		[MenuItem( "Assets/Inspect+/" + NEW_TAB_LABEL, priority = 1500 )]
 		private static void MenuItemNewTab( MenuCommand command )
@@ -44,6 +50,15 @@ namespace InspectPlusNamespace
 				InspectPlusWindow.Inspect( PreferablyGameObject( Selection.objects ), true );
 		}
 
+		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/" + NEW_WINDOW_LABEL, validate = true )]
+		[MenuItem( "Assets/Inspect+/" + NEW_TAB_LABEL, validate = true )]
+		[MenuItem( "Assets/Inspect+/" + NEW_WINDOW_LABEL, validate = true )]
+		private static bool GameObjectMenuValidate( MenuCommand command )
+		{
+			return Selection.objects.Length > 0;
+		}
+
 		[MenuItem( "CONTEXT/Component/" + NEW_TAB_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_TAB_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/AssetImporter/" + NEW_TAB_LABEL, priority = 1500 )]
@@ -61,15 +76,17 @@ namespace InspectPlusNamespace
 		{
 			InspectPlusWindow.Inspect( command.context, true );
 		}
+		#endregion
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_VALUE_LABEL, priority = 49 )]
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_VALUE_LABEL, priority = 1500 )]
+		#region Copy/Paste Buttons
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_GAMEOBJECT_REFERENCE_LABEL, priority = 50 )]
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_COMPONENT_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/Material/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		private static void ContextMenuItemCopyObject( MenuCommand command )
 		{
-			// Passing null as context parameter because we don't want to calculate a "./" RelativePath for this clipboard in XML mode
+			// Passing null as context parameter because we don't want to calculate a "./" RelativePath for this clipboard
 			if( command.context )
 				PasteBinWindow.AddToClipboard( command.context, Utilities.GetDetailedObjectName( command.context ), null );
 			else
@@ -80,7 +97,7 @@ namespace InspectPlusNamespace
 		private static void ContextMenuItemPasteComponentAsNew( MenuCommand command )
 		{
 			if( PasteBinWindow.ActiveClipboard != null )
-				PasteBinWindow.ActiveClipboard.PasteAsNewComponent( command.context );
+				PasteBinWindow.ActiveClipboard.PasteAsNewComponent( command.context as Component );
 		}
 
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL, priority = 1450 )]
@@ -94,8 +111,8 @@ namespace InspectPlusNamespace
 				else
 					objectsToOpenPasteBinWith.Add( command.context );
 
-				EditorApplication.update -= CallPastePasteComponentAsNewFromBin;
-				EditorApplication.update += CallPastePasteComponentAsNewFromBin;
+				EditorApplication.update -= CallPasteComponentAsNewFromBinOnce;
+				EditorApplication.update += CallPasteComponentAsNewFromBinOnce;
 			}
 			else if( objectsToOpenPasteBinWith != null )
 			{
@@ -104,9 +121,9 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private static void CallPastePasteComponentAsNewFromBin()
+		private static void CallPasteComponentAsNewFromBinOnce()
 		{
-			EditorApplication.update -= CallPastePasteComponentAsNewFromBin;
+			EditorApplication.update -= CallPasteComponentAsNewFromBinOnce;
 			ContextMenuItemPasteComponentAsNewFromBin( new MenuCommand( null ) );
 		}
 
@@ -155,7 +172,7 @@ namespace InspectPlusNamespace
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL, validate = true )]
 		private static bool ContextMenuItemPasteComponentAsNewValidate( MenuCommand command )
 		{
-			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context );
+			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context as Component );
 		}
 
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL, validate = true )]
@@ -193,16 +210,87 @@ namespace InspectPlusNamespace
 
 			return true;
 		}
+		#endregion
 
-		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, validate = true )]
-		[MenuItem( "GameObject/Inspect+/" + NEW_WINDOW_LABEL, validate = true )]
-		[MenuItem( "Assets/Inspect+/" + NEW_TAB_LABEL, validate = true )]
-		[MenuItem( "Assets/Inspect+/" + NEW_WINDOW_LABEL, validate = true )]
-		private static bool GameObjectMenuValidate( MenuCommand command )
+		#region Complete GameObject Copy/Paste Buttons
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL, priority = 50 )]
+		private static void MenuItemCopyCompleteGameObjectWithoutChildren( MenuCommand command )
 		{
-			return Selection.objects.Length > 0;
+			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
+			if( gameObject && !AssetDatabase.Contains( gameObject ) )
+				PasteBinWindow.AddToClipboard( new GameObjectHierarchyClipboard( gameObject, false ), Utilities.GetDetailedObjectName( gameObject ) + " (Complete GameObject)", gameObject );
 		}
 
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL, priority = 50 )]
+		private static void MenuItemCopyCompleteGameObjectWithChildren( MenuCommand command )
+		{
+			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
+			if( gameObject && !AssetDatabase.Contains( gameObject ) )
+				PasteBinWindow.AddToClipboard( new GameObjectHierarchyClipboard( gameObject, true ), Utilities.GetDetailedObjectName( gameObject ) + " (Complete GameObject)", gameObject );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL, priority = 50 )]
+		private static void MenuItemPasteCompleteGameObject( MenuCommand command )
+		{
+			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
+			if( PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteCompleteGameObject( gameObject ) )
+				Selection.activeGameObject = PasteBinWindow.ActiveClipboard.PasteCompleteGameObject( gameObject );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL, priority = 50 )]
+		private static void MenuItemPasteCompleteGameObjectFromBin( MenuCommand command )
+		{
+			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
+			if( command.context )
+			{
+				GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
+				if( !gameObject || AssetDatabase.Contains( gameObject ) )
+					return;
+
+				if( objectsToOpenPasteBinWith == null )
+					objectsToOpenPasteBinWith = new List<Object>( 2 ) { command.context };
+				else
+					objectsToOpenPasteBinWith.Add( command.context );
+
+				EditorApplication.update -= CallPasteCompleteGameObjectFromBinOnce;
+				EditorApplication.update += CallPasteCompleteGameObjectFromBinOnce;
+			}
+			else if( objectsToOpenPasteBinWith != null )
+			{
+				PasteGameObjectHierarchyFromBin( objectsToOpenPasteBinWith.ToArray() );
+				objectsToOpenPasteBinWith = null;
+			}
+			else
+				PasteGameObjectHierarchyFromBin( new Object[1] { null } );
+		}
+
+		private static void CallPasteCompleteGameObjectFromBinOnce()
+		{
+			EditorApplication.update -= CallPasteCompleteGameObjectFromBinOnce;
+			MenuItemPasteCompleteGameObjectFromBin( new MenuCommand( null ) );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL, validate = true )]
+		private static bool MenuItemCopyCompleteGameObjectValidate( MenuCommand command )
+		{
+			return command.context as GameObject && !AssetDatabase.Contains( command.context );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL, validate = true )]
+		private static bool MenuItemPasteCompleteGameObjectValidate( MenuCommand command )
+		{
+			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteCompleteGameObject( PreferablyGameObject( command.context ) as GameObject );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL, validate = true )]
+		private static bool MenuItemPasteCompleteGameObjectFromBinValidate( MenuCommand command )
+		{
+			return !( command.context as GameObject ) || !AssetDatabase.Contains( command.context );
+		}
+		#endregion
+
+		#region Other Context Menu Buttons
 		public static void OnPropertyRightClicked( GenericMenu menu, SerializedProperty property )
 		{
 			Object obj = null;
@@ -305,6 +393,7 @@ namespace InspectPlusNamespace
 		}
 		#endregion
 
+		#region Helper Functions
 		private static void CopyValue( object obj )
 		{
 			PasteBinWindow.AddToClipboard( (SerializedProperty) obj );
@@ -324,6 +413,11 @@ namespace InspectPlusNamespace
 		private static void PasteComponentAsNewFromBin( object obj )
 		{
 			PasteFromBin( obj, PasteBinContextWindow.PasteType.ComponentAsNew );
+		}
+
+		private static void PasteGameObjectHierarchyFromBin( object obj )
+		{
+			PasteFromBin( obj, PasteBinContextWindow.PasteType.CompleteGameObject );
 		}
 
 		private static void PasteFromBin( object obj, PasteBinContextWindow.PasteType pasteType )
@@ -364,5 +458,6 @@ namespace InspectPlusNamespace
 
 			return objs;
 		}
+		#endregion
 	}
 }
