@@ -7,7 +7,7 @@ namespace InspectPlusNamespace
 {
 	public class PasteBinContextWindow : EditorWindow
 	{
-		public enum PasteType { Normal = 0, ComponentAsNew = 1, CompleteGameObject = 2 };
+		public enum PasteType { Normal = 0, ComponentAsNew = 1, CompleteGameObject = 2, AssetFiles = 3 };
 
 		private const string SMART_PASTE_TOOLTIP = "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C";
 
@@ -94,15 +94,24 @@ namespace InspectPlusNamespace
 			List<SerializedClipboard> clipboardRaw = PasteBinWindow.GetSerializedClipboards();
 			for( int i = 0; i < clipboardRaw.Count; i++ )
 			{
-				if( ( pasteType == PasteType.Normal && clipboardRaw[i].CanPasteToObject( objects[0] ) ) ||
-					( pasteType == PasteType.ComponentAsNew && clipboardRaw[i].CanPasteAsNewComponent( (Component) objects[0] ) ) ||
-					( pasteType == PasteType.CompleteGameObject && clipboardRaw[i].CanPasteCompleteGameObject( (GameObject) objects[0] ) ) )
+				switch( pasteType )
 				{
-					clipboard.Add( clipboardRaw[i] );
-					clipboardValues.Add( clipboardRaw[i].RootValue.GetClipboardObject( null ) ); // RootValue won't be affected by smart copy-paste in this case
+					case PasteType.Normal:
+						if( !clipboardRaw[i].CanPasteToObject( objects[0] ) )
+							continue;
 
-					shouldShowSmartPasteButton = true;
+						shouldShowSmartPasteButton = true; break;
+					case PasteType.ComponentAsNew:
+						if( !clipboardRaw[i].CanPasteAsNewComponent( (Component) objects[0] ) )
+							continue;
+
+						shouldShowSmartPasteButton = true; break;
+					case PasteType.CompleteGameObject: if( !clipboardRaw[i].CanPasteCompleteGameObject( (GameObject) objects[0] ) ) continue; break;
+					case PasteType.AssetFiles: if( !clipboardRaw[i].CanPasteAssetFiles( objects ) ) continue; break;
 				}
+
+				clipboard.Add( clipboardRaw[i] );
+				clipboardValues.Add( clipboardRaw[i].RootValue.GetClipboardObject( null ) );
 			}
 		}
 
@@ -201,7 +210,10 @@ namespace InspectPlusNamespace
 				ev.Use();
 
 				if( mouseButton == 0 )
+				{
 					PasteClipboard( hoveredClipboardIndex );
+					GUIUtility.ExitGUI();
+				}
 				else if( mouseButton == 1 )
 				{
 					GenericMenu menu = new GenericMenu();
@@ -272,16 +284,21 @@ namespace InspectPlusNamespace
 			int index = (int) obj;
 
 			if( targetProperty != null )
-				targetProperty.PasteValue( clipboard[index].RootValue );
+				targetProperty.PasteValue( clipboard[index] );
 			else if( targetObjects != null )
 			{
-				for( int j = 0; j < targetObjects.Length; j++ )
+				if( pasteType == PasteType.AssetFiles )
+					clipboard[index].PasteAssetFiles( targetObjects );
+				else
 				{
-					switch( pasteType )
+					for( int j = 0; j < targetObjects.Length; j++ )
 					{
-						case PasteType.Normal: clipboard[index].PasteToObject( targetObjects[j] ); break;
-						case PasteType.ComponentAsNew: clipboard[index].PasteAsNewComponent( (Component) targetObjects[j] ); break;
-						case PasteType.CompleteGameObject: Selection.activeGameObject = clipboard[index].PasteCompleteGameObject( (GameObject) targetObjects[j] ); break;
+						switch( pasteType )
+						{
+							case PasteType.Normal: clipboard[index].PasteToObject( targetObjects[j] ); break;
+							case PasteType.ComponentAsNew: clipboard[index].PasteAsNewComponent( (Component) targetObjects[j] ); break;
+							case PasteType.CompleteGameObject: clipboard[index].PasteCompleteGameObject( (GameObject) targetObjects[j], Event.current == null || ( !Event.current.control && !Event.current.shift ) ); break; // Don't preserve objects' world space positions if CTRL or Shift key are held
+						}
 					}
 				}
 			}

@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
+using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
 
 namespace InspectPlusNamespace
@@ -12,12 +14,14 @@ namespace InspectPlusNamespace
 
 		private const string CONTEXT_COPY_LABEL = "Copy (Inspect+)";
 		private const string CONTEXT_COPY_COMPONENT_LABEL = "Copy Component (Inspect+)";
-		private const string CONTEXT_COPY_REFERENCE_LABEL = "Copy Reference";
-		private const string CONTEXT_COPY_GAMEOBJECT_REFERENCE_LABEL = "Copy/Reference";
+		private const string CONTEXT_COPY_REFERENCE_LABEL = "Copy/Reference";
+		private const string CONTEXT_COPY_ASSET_FILES_LABEL = "Copy/Asset File(s)";
 		private const string CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL = "Copy/Complete GameObject (This Object Only)";
 		private const string CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL = "Copy/Complete GameObject (Include Children)";
 		private const string CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL = "Paste/Complete GameObject";
 		private const string CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL = "Paste/Complete GameObject From Bin";
+		private const string CONTEXT_PASTE_ASSET_FILES_LABEL = "Paste/Asset File(s)";
+		private const string CONTEXT_PASTE_ASSET_FILES_FROM_BIN_LABEL = "Paste/Asset File(s) From Bin";
 		private const string CONTEXT_PASTE_LABEL = "Paste (Inspect+)";
 		private const string CONTEXT_PASTE_VALUES_LABEL = "Paste Values (Inspect+)";
 		private const string CONTEXT_PASTE_COMPONENT_VALUES_LABEL = "Paste Component Values (Inspect+)";
@@ -79,18 +83,17 @@ namespace InspectPlusNamespace
 		#endregion
 
 		#region Copy/Paste Buttons
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_GAMEOBJECT_REFERENCE_LABEL, priority = 50 )]
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, priority = 1500 )]
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, priority = 50 )]
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, priority = 1501 )]
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_COMPONENT_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/Material/" + CONTEXT_COPY_LABEL, priority = 1450 )]
 		private static void ContextMenuItemCopyObject( MenuCommand command )
 		{
-			// Passing null as context parameter because we don't want to calculate a "./" RelativePath for this clipboard
 			if( command.context )
-				PasteBinWindow.AddToClipboard( command.context, Utilities.GetDetailedObjectName( command.context ), null );
+				PasteBinWindow.AddToClipboard( command.context, Utilities.GetDetailedObjectName( command.context ), command.context );
 			else
-				PasteBinWindow.AddToClipboard( Selection.activeObject, Utilities.GetDetailedObjectName( Selection.activeObject ), null );
+				PasteBinWindow.AddToClipboard( Selection.activeObject, Utilities.GetDetailedObjectName( Selection.activeObject ), Selection.activeObject );
 		}
 
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL, priority = 1450 )]
@@ -181,6 +184,13 @@ namespace InspectPlusNamespace
 			return ValidatePasteOperation( command );
 		}
 
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, validate = true )]
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, validate = true )]
+		private static bool ContextMenuItemCopyObjectValidate( MenuCommand command )
+		{
+			return Selection.activeObject;
+		}
+
 		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_LABEL, validate = true )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
 		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
@@ -216,17 +226,44 @@ namespace InspectPlusNamespace
 		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL, priority = 50 )]
 		private static void MenuItemCopyCompleteGameObjectWithoutChildren( MenuCommand command )
 		{
-			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
-			if( gameObject && !AssetDatabase.Contains( gameObject ) )
-				PasteBinWindow.AddToClipboard( new GameObjectHierarchyClipboard( gameObject, false ), Utilities.GetDetailedObjectName( gameObject ) + " (Complete GameObject)", gameObject );
+			// We are using EditorApplication.update to copy all selected GameObjects in one batch (else-clause)
+			if( command.context )
+			{
+				EditorApplication.update -= CallCopyCompleteGameObjectWithoutChildrenOnce;
+				EditorApplication.update += CallCopyCompleteGameObjectWithoutChildrenOnce;
+			}
+			else
+				CopyCompleteGameObject( false );
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL, priority = 50 )]
 		private static void MenuItemCopyCompleteGameObjectWithChildren( MenuCommand command )
 		{
-			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
-			if( gameObject && !AssetDatabase.Contains( gameObject ) )
-				PasteBinWindow.AddToClipboard( new GameObjectHierarchyClipboard( gameObject, true ), Utilities.GetDetailedObjectName( gameObject ) + " (Complete GameObject)", gameObject );
+			// We are using EditorApplication.update to copy all selected GameObjects in one batch (else-clause)
+			if( command.context )
+			{
+				EditorApplication.update -= CallCopyCompleteGameObjectWithChildrenOnce;
+				EditorApplication.update += CallCopyCompleteGameObjectWithChildrenOnce;
+			}
+			else
+				CopyCompleteGameObject( true );
+		}
+
+		private static void CopyCompleteGameObject( bool withChildren )
+		{
+			GameObject[] selectedGameObjects = Selection.GetFiltered<GameObject>( SelectionMode.TopLevel | SelectionMode.ExcludePrefab | SelectionMode.Editable );
+
+			// Sorting selection can be important when all copied objects have the same name because their order will matter for Smart Paste's RelativePath
+			System.Array.Sort( selectedGameObjects, ( go1, go2 ) => CompareHierarchySiblingIndices( go1.transform, go2.transform ) );
+
+			if( selectedGameObjects.Length > 0 )
+			{
+				string label = Utilities.GetDetailedObjectName( selectedGameObjects[0] );
+				if( selectedGameObjects.Length > 1 )
+					label += " (and " + ( selectedGameObjects.Length - 1 ) + " more)";
+
+				PasteBinWindow.AddToClipboard( new GameObjectHierarchyClipboard( selectedGameObjects, withChildren ), label + " (Complete GameObject)", null );
+			}
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL, priority = 50 )]
@@ -234,7 +271,7 @@ namespace InspectPlusNamespace
 		{
 			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
 			if( PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteCompleteGameObject( gameObject ) )
-				Selection.activeGameObject = PasteBinWindow.ActiveClipboard.PasteCompleteGameObject( gameObject );
+				PasteBinWindow.ActiveClipboard.PasteCompleteGameObject( gameObject, true );
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL, priority = 50 )]
@@ -264,6 +301,18 @@ namespace InspectPlusNamespace
 				PasteGameObjectHierarchyFromBin( new Object[1] { null } );
 		}
 
+		private static void CallCopyCompleteGameObjectWithoutChildrenOnce()
+		{
+			EditorApplication.update -= CallCopyCompleteGameObjectWithoutChildrenOnce;
+			MenuItemCopyCompleteGameObjectWithoutChildren( new MenuCommand( null ) );
+		}
+
+		private static void CallCopyCompleteGameObjectWithChildrenOnce()
+		{
+			EditorApplication.update -= CallCopyCompleteGameObjectWithChildrenOnce;
+			MenuItemCopyCompleteGameObjectWithChildren( new MenuCommand( null ) );
+		}
+
 		private static void CallPasteCompleteGameObjectFromBinOnce()
 		{
 			EditorApplication.update -= CallPasteCompleteGameObjectFromBinOnce;
@@ -274,7 +323,7 @@ namespace InspectPlusNamespace
 		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL, validate = true )]
 		private static bool MenuItemCopyCompleteGameObjectValidate( MenuCommand command )
 		{
-			return command.context as GameObject && !AssetDatabase.Contains( command.context );
+			return Selection.GetFiltered<GameObject>( SelectionMode.TopLevel | SelectionMode.ExcludePrefab | SelectionMode.Editable ).Length > 0;
 		}
 
 		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL, validate = true )]
@@ -287,6 +336,101 @@ namespace InspectPlusNamespace
 		private static bool MenuItemPasteCompleteGameObjectFromBinValidate( MenuCommand command )
 		{
 			return !( command.context as GameObject ) || !AssetDatabase.Contains( command.context );
+		}
+		#endregion
+
+		#region Asset File Copy/Paste Buttons
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_ASSET_FILES_LABEL, priority = 1501 )]
+		private static void MenuItemCopyAssetFiles( MenuCommand command )
+		{
+			// We are using EditorApplication.update to copy all selected asset files in one batch (else-clause)
+			if( command.context )
+			{
+				EditorApplication.update -= CallCopyAssetFilesOnce;
+				EditorApplication.update += CallCopyAssetFilesOnce;
+			}
+			else
+			{
+				string[] selectedAssets = GetSelectedAssetPaths( false, true );
+				if( selectedAssets.Length > 0 )
+				{
+					string label = selectedAssets[0];
+					if( selectedAssets.Length > 1 )
+						label += " (and " + ( selectedAssets.Length - 1 ) + " more)";
+
+					PasteBinWindow.AddToClipboard( new AssetFilesClipboard( selectedAssets ), label + " (Asset File)", null );
+				}
+			}
+		}
+
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_LABEL, priority = 1501 )]
+		private static void MenuItemPasteAssetFiles( MenuCommand command )
+		{
+			// We are using EditorApplication.update to paste files to all target paths in one batch (else-clause)
+			if( command.context )
+			{
+				EditorApplication.update -= CallPasteAssetFilesOnce;
+				EditorApplication.update += CallPasteAssetFilesOnce;
+			}
+			else
+			{
+				string[] selectedAssets = GetSelectedAssetPaths( true, false );
+				if( selectedAssets.Length > 0 && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAssetFiles( selectedAssets ) )
+					PasteBinWindow.ActiveClipboard.PasteAssetFiles( selectedAssets );
+			}
+		}
+
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_FROM_BIN_LABEL, priority = 1501 )]
+		private static void MenuItemPasteAssetFilesFromBin( MenuCommand command )
+		{
+			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
+			if( command.context )
+			{
+				EditorApplication.update -= CallPasteAssetFilesFromBinOnce;
+				EditorApplication.update += CallPasteAssetFilesFromBinOnce;
+			}
+			else
+			{
+				string[] selectedAssets = GetSelectedAssetPaths( true, false );
+				if( selectedAssets.Length > 0 )
+					PasteAssetFilesFromBin( selectedAssets );
+			}
+		}
+
+		private static void CallCopyAssetFilesOnce()
+		{
+			EditorApplication.update -= CallCopyAssetFilesOnce;
+			MenuItemCopyAssetFiles( new MenuCommand( null ) );
+		}
+
+		private static void CallPasteAssetFilesOnce()
+		{
+			EditorApplication.update -= CallPasteAssetFilesOnce;
+			MenuItemPasteAssetFiles( new MenuCommand( null ) );
+		}
+
+		private static void CallPasteAssetFilesFromBinOnce()
+		{
+			EditorApplication.update -= CallPasteAssetFilesFromBinOnce;
+			MenuItemPasteAssetFilesFromBin( new MenuCommand( null ) );
+		}
+
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_ASSET_FILES_LABEL, validate = true )]
+		private static bool MenuItemCopyAssetFilesValidate( MenuCommand command )
+		{
+			return GetSelectedAssetPaths( false, true ).Length > 0;
+		}
+
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_LABEL, validate = true )]
+		private static bool MenuItemPasteAssetFilesValidate( MenuCommand command )
+		{
+			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAssetFiles( GetSelectedAssetPaths( true, false ) );
+		}
+
+		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_FROM_BIN_LABEL, validate = true )]
+		private static bool MenuItemPasteAssetFilesFromBinValidate( MenuCommand command )
+		{
+			return GetSelectedAssetPaths( true, false ).Length > 0;
 		}
 		#endregion
 
@@ -402,7 +546,7 @@ namespace InspectPlusNamespace
 		private static void PasteValue( object obj )
 		{
 			if( PasteBinWindow.ActiveClipboard != null )
-				( (SerializedProperty) obj ).PasteValue( PasteBinWindow.ActiveClipboard.RootValue );
+				( (SerializedProperty) obj ).PasteValue( PasteBinWindow.ActiveClipboard );
 		}
 
 		private static void PasteValueFromBin( object obj )
@@ -418,6 +562,18 @@ namespace InspectPlusNamespace
 		private static void PasteGameObjectHierarchyFromBin( object obj )
 		{
 			PasteFromBin( obj, PasteBinContextWindow.PasteType.CompleteGameObject );
+		}
+
+		private static void PasteAssetFilesFromBin( object obj )
+		{
+			string[] assetPaths = (string[]) obj;
+			Utilities.ConvertAbsolutePathsToRelativePaths( assetPaths );
+
+			Object[] parentFolders = new Object[assetPaths.Length];
+			for( int i = 0; i < assetPaths.Length; i++ )
+				parentFolders[i] = AssetDatabase.LoadMainAssetAtPath( assetPaths[i] );
+
+			PasteFromBin( parentFolders, PasteBinContextWindow.PasteType.AssetFiles );
 		}
 
 		private static void PasteFromBin( object obj, PasteBinContextWindow.PasteType pasteType )
@@ -457,6 +613,132 @@ namespace InspectPlusNamespace
 				objs[i] = PreferablyGameObject( objs[i] );
 
 			return objs;
+		}
+
+		// Returns -1 if t1 is above t2 in Hierarchy, 1 if t1 is below t2 in Hierarchy and 0 if they are the same object
+		private static int CompareHierarchySiblingIndices( Transform t1, Transform t2 )
+		{
+			Transform parent1 = t1.parent;
+			Transform parent2 = t2.parent;
+
+			if( parent1 == parent2 )
+				return t1.GetSiblingIndex() - t2.GetSiblingIndex();
+
+			int deltaHierarchyDepth = 0;
+			while( parent1 )
+			{
+				deltaHierarchyDepth++;
+				parent1 = parent1.parent;
+			}
+			while( parent2 )
+			{
+				deltaHierarchyDepth--;
+				parent2 = parent2.parent;
+			}
+
+			for( ; deltaHierarchyDepth > 0; deltaHierarchyDepth-- )
+			{
+				t1 = t1.parent;
+				if( t1 == t2 )
+					return 1;
+			}
+			for( ; deltaHierarchyDepth < 0; deltaHierarchyDepth++ )
+			{
+				t2 = t2.parent;
+				if( t1 == t2 )
+					return -1;
+			}
+
+			while( t1.parent != t2.parent )
+			{
+				t1 = t1.parent;
+				t2 = t2.parent;
+			}
+
+			return t1.GetSiblingIndex() - t2.GetSiblingIndex();
+		}
+
+		// Returns selected assets' paths
+		private static string[] GetSelectedAssetPaths( bool convertFilesToFolders, bool removeChildPaths )
+		{
+			// Calculate all selected assets' paths
+			List<string> selection = new List<string>( Selection.assetGUIDs );
+			for( int i = selection.Count - 1; i >= 0; i-- )
+			{
+				if( !string.IsNullOrEmpty( selection[i] ) )
+					selection[i] = AssetDatabase.GUIDToAssetPath( selection[i] );
+
+				if( string.IsNullOrEmpty( selection[i] ) )
+				{
+					selection.RemoveAt( i );
+					continue;
+				}
+			}
+
+			if( convertFilesToFolders )
+			{
+				// For files, change the path to the containing folder's path
+				for( int i = selection.Count - 1; i >= 0; i-- )
+				{
+					if( File.Exists( selection[i] ) )
+						selection[i] = Path.GetDirectoryName( selection[i] );
+				}
+			}
+
+			if( removeChildPaths )
+			{
+				// Remove redundant paths (e.g. if both a folder and one of its files are selected, omit the file's path)
+				for( int i = selection.Count - 1; i >= 0; i-- )
+				{
+					for( int j = i - 1; j >= 0; j-- )
+					{
+						if( selection[i].Length < selection[j].Length )
+						{
+							if( selection[j].StartsWith( selection[i] + "/" ) )
+							{
+								selection.RemoveAt( j );
+								i--;
+							}
+						}
+						else if( selection[i].StartsWith( selection[j] + "/" ) )
+						{
+							selection.RemoveAt( i );
+							break;
+						}
+					}
+				}
+			}
+
+			// Convert relative paths to absolute paths
+			for( int i = selection.Count - 1; i >= 0; i-- )
+			{
+				try
+				{
+					selection[i] = Path.GetFullPath( selection[i] );
+					if( string.IsNullOrEmpty( selection[i] ) )
+						selection.RemoveAt( i );
+				}
+				catch( System.Exception e )
+				{
+					Debug.LogException( e );
+					selection.RemoveAt( i );
+				}
+			}
+
+			// Remove duplicate paths
+			for( int i = selection.Count - 1; i >= 0; i-- )
+			{
+				for( int j = i - 1; j >= 0; j-- )
+				{
+					if( selection[i] == selection[j] )
+					{
+						selection.RemoveAt( i );
+						break;
+					}
+				}
+			}
+
+			return selection.ToArray();
 		}
 		#endregion
 	}

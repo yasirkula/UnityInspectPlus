@@ -204,5 +204,22 @@ namespace InspectPlusNamespace
 
 			return (Rect) screenFittedRectGetter.Invoke( null, new object[3] { originalRect, true, true } );
 		}
+
+		// Converts full paths to relative paths so that they can be used with AssetDatabase
+		internal static void ConvertAbsolutePathsToRelativePaths( string[] absolutePaths )
+		{
+			string projectPath = Path.GetFullPath( Directory.GetCurrentDirectory() );
+			string projectPath2 = projectPath.Replace( '\\', '/' );
+
+			int projectPathLength = projectPath2.Length;
+			if( projectPath2[projectPath.Length - 1] != '/' )
+				projectPathLength++;
+
+			for( int i = 0; i < absolutePaths.Length; i++ )
+			{
+				if( absolutePaths[i].StartsWith( projectPath ) || absolutePaths[i].StartsWith( projectPath2 ) )
+					absolutePaths[i] = absolutePaths[i].Substring( projectPathLength );
+			}
+		}
 	}
 }

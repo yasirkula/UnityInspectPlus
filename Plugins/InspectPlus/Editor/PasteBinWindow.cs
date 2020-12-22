@@ -12,6 +12,7 @@ using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.Array
 using GenericObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GenericObjectClipboard;
 using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ManagedObjectClipboard;
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
+using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
 
 namespace InspectPlusNamespace
 {
@@ -341,7 +342,9 @@ namespace InspectPlusNamespace
 			else if( clipboardValue is ManagedObjectClipboard )
 				EditorGUILayout.TextField( GUIContent.none, ( (ManagedObjectClipboard) clipboardValue ).type + " object (SerializeField)" );
 			else if( clipboardValue is GameObjectHierarchyClipboard )
-				EditorGUILayout.TextField( GUIContent.none, ( (GameObjectHierarchyClipboard) clipboardValue ).serializedData.Name + " (Complete GameObject)" );
+				EditorGUILayout.TextField( GUIContent.none, ( (GameObjectHierarchyClipboard) clipboardValue ).name + " (Complete GameObject)" );
+			else if( clipboardValue is AssetFilesClipboard )
+				EditorGUILayout.TextField( GUIContent.none, ( (AssetFilesClipboard) clipboardValue ).paths[0] + " (Asset File)" );
 			else
 				EditorGUILayout.TextField( GUIContent.none, clipboard.RootValue.GetType().Name + " object" );
 
@@ -360,10 +363,15 @@ namespace InspectPlusNamespace
 		{
 			object clipboard = prop.CopyValue();
 			if( clipboard != null )
-				AddToClipboard( clipboard, string.Concat( Utilities.GetDetailedObjectName( prop.serializedObject.targetObject ), ".", prop.propertyPath.Replace( ".Array.data[", "[" ) ), prop.serializedObject.targetObject );
+				AddToClipboard( clipboard, prop.name, string.Concat( Utilities.GetDetailedObjectName( prop.serializedObject.targetObject ), ".", prop.propertyPath.Replace( ".Array.data[", "[" ) ), prop.serializedObject.targetObject );
 		}
 
 		public static void AddToClipboard( object obj, string label, Object context )
+		{
+			AddToClipboard( obj, null, label, context );
+		}
+
+		private static void AddToClipboard( object obj, string propertyName, string label, Object context )
 		{
 			if( obj == null || obj.Equals( null ) )
 				return;
@@ -378,7 +386,7 @@ namespace InspectPlusNamespace
 					mainWindow.clipboardValues.RemoveAt( 0 );
 			}
 
-			clipboard.Add( new SerializedClipboard( obj, context, label ) );
+			clipboard.Add( new SerializedClipboard( obj, context, propertyName, label ) );
 			ActiveClipboardIndex = clipboard.Count - 1;
 
 			if( mainWindow )

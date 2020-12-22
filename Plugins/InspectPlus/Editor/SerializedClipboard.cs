@@ -13,6 +13,7 @@ using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.Array
 using VectorClipboard = InspectPlusNamespace.SerializablePropertyExtensions.VectorClipboard;
 using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ManagedObjectClipboard;
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
+using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
 #if UNITY_2018_3_OR_NEWER
 using PrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStage;
 using PrefabStageUtility = UnityEditor.Experimental.SceneManagement.PrefabStageUtility;
@@ -33,7 +34,8 @@ namespace InspectPlusNamespace
 			Vector = 10, Color = 11,
 			Long = 12, Double = 13, String = 14,
 			AnimationCurve = 15, Gradient = 16,
-			GameObjectHierarchy = 17
+			GameObjectHierarchy = 17,
+			AssetFiles = 18
 		};
 
 		public abstract class IPObject
@@ -968,7 +970,7 @@ namespace InspectPlusNamespace
 						for( int i = 0; i < assets.Length; i++ )
 						{
 							Object asset = assets[i];
-							if( asset.name == ObjectName && asset.GetType().Name == serializedType.Name && ( serializedType.Type == null || serializedType.Type == asset.GetType() ) )
+							if( asset && asset.name == ObjectName && asset.GetType().Name == serializedType.Name && ( serializedType.Type == null || serializedType.Type == asset.GetType() ) )
 								return asset;
 						}
 					}
@@ -1036,6 +1038,178 @@ namespace InspectPlusNamespace
 
 		public class IPGameObjectHierarchy : IPObject
 		{
+			public IPGameObjectChild[] GameObjects;
+
+			public IPVector[] WorldPositions;
+			public IPVector[] WorldRotations;
+			public IPVector[] WorldScales;
+
+			public IPGameObjectHierarchy( SerializedClipboard root ) : base( root ) { }
+			public IPGameObjectHierarchy( SerializedClipboard root, string name, GameObjectHierarchyClipboard value ) : base( root, name )
+			{
+				GameObjects = new IPGameObjectChild[value.source.Length];
+				WorldPositions = new IPVector[value.source.Length];
+				WorldRotations = new IPVector[value.source.Length];
+				WorldScales = new IPVector[value.source.Length];
+
+				for( int i = 0; i < GameObjects.Length; i++ )
+				{
+					GameObject gameObject = value.source[i];
+
+					GameObjects[i] = new IPGameObjectChild( root, gameObject, value.includeChildren );
+					WorldPositions[i] = new IPVector( root, null, gameObject.transform.position );
+					WorldRotations[i] = new IPVector( root, null, gameObject.transform.rotation );
+					WorldScales[i] = new IPVector( root, null, gameObject.transform.lossyScale );
+				}
+			}
+
+			public override object GetClipboardObject( Object context )
+			{
+				return new GameObjectHierarchyClipboard( GameObjects[0].Name );
+			}
+
+			public override void Serialize( BinaryWriter writer )
+			{
+				base.Serialize( writer );
+
+				writer.Write( GameObjects.Length );
+				for( int i = 0; i < GameObjects.Length; i++ )
+					GameObjects[i].Serialize( writer );
+
+				root.SerializeArray( writer, WorldPositions );
+				root.SerializeArray( writer, WorldRotations );
+				root.SerializeArray( writer, WorldScales );
+			}
+
+			public override void Deserialize( BinaryReader reader )
+			{
+				base.Deserialize( reader );
+
+				GameObjects = new IPGameObjectChild[reader.ReadInt32()];
+				for( int i = 0; i < GameObjects.Length; i++ )
+				{
+					GameObjects[i] = new IPGameObjectChild();
+					GameObjects[i].Deserialize( root, reader );
+				}
+
+				WorldPositions = root.DeserializeArray<IPVector>( reader );
+				WorldRotations = root.DeserializeArray<IPVector>( reader );
+				WorldScales = root.DeserializeArray<IPVector>( reader );
+			}
+
+			public GameObject[] PasteHierarchy( Transform parent, bool preserveWorldSpacePosition )
+			{
+				if( parent && AssetDatabase.Contains( parent ) )
+				{
+					Debug.LogError( "Can't paste Complete GameObject to a prefab or model Asset: " + parent, parent );
+					return new GameObject[0];
+				}
+
+#if UNITY_2018_3_OR_NEWER
+				// If a parent isn't set and we are in Prefab mode, set the parent to the prefab root
+				if( !parent )
+				{
+					PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+					if( openPrefabStage != null )
+						parent = openPrefabStage.prefabContentsRoot.transform;
+				}
+#endif
+
+				GameObject[] result = new GameObject[GameObjects.Length];
+				List<GameObject> hierarchy = new List<GameObject>( GameObjects.Length * 32 );
+				List<IPGameObjectChild.ComponentToPaste[]> hierarchyComponents = new List<IPGameObjectChild.ComponentToPaste[]>( hierarchy.Capacity );
+
+				// Recursively create child GameObjects (and their components). Creating all Components before pasting
+				// their values allows us to restore references between Components (since all the Components will
+				// exist while pasting the Component values)
+				for( int i = 0; i < GameObjects.Length; i++ )
+				{
+					GameObject rootGameObject = null;
+					GameObjects[i].CreateGameObjectsRecursively( parent, ref rootGameObject, hierarchy, hierarchyComponents );
+					result[i] = rootGameObject;
+				}
+
+				// Paste component values
+				bool smartCopyPasteEnabled = InspectPlusSettings.Instance.SmartCopyPaste;
+				try
+				{
+					// Smart copy-paste is mandatory for copy&pasting GameObject hierarchies in order to
+					// be able to restore references between Components properly
+					InspectPlusSettings.Instance.SmartCopyPaste = true;
+
+					for( int i = 0; i < hierarchyComponents.Count; i++ )
+					{
+						IPGameObjectChild.ComponentToPaste[] componentsToPaste = hierarchyComponents[i];
+						for( int j = 0; j < componentsToPaste.Length; j++ )
+							componentsToPaste[j].SerializedComponent.PasteToObject( componentsToPaste[j].TargetComponent, false );
+					}
+				}
+				finally
+				{
+					InspectPlusSettings.Instance.SmartCopyPaste = smartCopyPasteEnabled;
+				}
+
+				// Preserve world space positions, if needed
+				if( preserveWorldSpacePosition )
+				{
+					Transform dummyGO = null;
+					try
+					{
+						// Setting object's lossy scale is far from trivial when object is skewed. No matter what I tried,
+						// I couldn't replicate Unity's world space copy-paste behaviour. The only way to exactly reproduce
+						// the same lossyScale values is to use Unity's SetParent(parent, true) function so that Unity handles
+						// the calculation of losstScale for us
+						dummyGO = new GameObject().transform;
+
+						for( int i = 0; i < result.Length; i++ )
+						{
+							if( !result[i] )
+								continue;
+
+							if( !parent )
+							{
+								result[i].transform.localPosition = (VectorClipboard) WorldPositions[i].GetClipboardObject( null );
+								result[i].transform.localRotation = (VectorClipboard) WorldRotations[i].GetClipboardObject( null );
+								result[i].transform.localScale = (VectorClipboard) WorldScales[i].GetClipboardObject( null );
+							}
+							else
+							{
+								dummyGO.SetParent( null, false );
+								dummyGO.localPosition = (VectorClipboard) WorldPositions[i].GetClipboardObject( null );
+								dummyGO.localRotation = (VectorClipboard) WorldRotations[i].GetClipboardObject( null );
+								dummyGO.localScale = (VectorClipboard) WorldScales[i].GetClipboardObject( null );
+								dummyGO.SetParent( parent, true );
+
+								result[i].transform.localPosition = dummyGO.localPosition;
+								result[i].transform.localRotation = dummyGO.localRotation;
+								result[i].transform.localScale = dummyGO.localScale;
+							}
+						}
+					}
+					finally
+					{
+						if( dummyGO )
+							Object.DestroyImmediate( dummyGO.gameObject );
+					}
+				}
+
+				return result;
+			}
+
+			public void PrintHierarchy( StringBuilder sb )
+			{
+				for( int i = 0; i < GameObjects.Length; i++ )
+				{
+					GameObjects[i].PrintHierarchyRecursively( sb, 0 );
+
+					if( i < GameObjects.Length - 1 )
+						sb.Append( "\n" );
+				}
+			}
+		}
+
+		public class IPGameObjectChild
+		{
 			[Serializable]
 			public struct ComponentInfo
 			{
@@ -1078,6 +1252,7 @@ namespace InspectPlusNamespace
 				}
 			}
 
+			public string Name;
 			public bool IsActive;
 			public int Layer;
 			public string Tag;
@@ -1090,14 +1265,14 @@ namespace InspectPlusNamespace
 			public ComponentInfo[] Components;
 			public RemovedComponentInfo[] RemovedComponents;
 
-			public IPGameObjectHierarchy[] Children;
+			public IPGameObjectChild[] Children;
 
-			public IPGameObjectHierarchy( SerializedClipboard root ) : base( root ) { }
-			public IPGameObjectHierarchy( SerializedClipboard root, GameObjectHierarchyClipboard value ) : base( root, value.source.name )
+			public IPGameObjectChild() { }
+			public IPGameObjectChild( SerializedClipboard root, GameObject gameObject, bool includeChildren )
 			{
-				GameObject gameObject = value.source;
 				Transform transform = gameObject.transform;
 
+				Name = gameObject.name;
 				IsActive = gameObject.activeSelf;
 				Layer = gameObject.layer;
 				Tag = gameObject.tag;
@@ -1171,7 +1346,7 @@ namespace InspectPlusNamespace
 					Components = new ComponentInfo[_components.Count];
 					for( int i = 0; i < _components.Count; i++ )
 					{
-						SerializedClipboard serializedComponent = new SerializedClipboard( _components[i], _components[i], null );
+						SerializedClipboard serializedComponent = new SerializedClipboard( _components[i], _components[i], null, null );
 						bool componentEnabled = EditorUtility.GetObjectEnabled( _components[i] ) != 0;
 						Components[i] = new ComponentInfo( serializedComponent, componentEnabled, (int) _components[i].hideFlags, GetIndexOfComponentByType( _components[i], _components ) );
 					}
@@ -1187,8 +1362,8 @@ namespace InspectPlusNamespace
 						if( prefabRoot == gameObject )
 						{
 							// If child objects aren't copied and this prefab has child objects, don't save the prefab data
-							if( value.includeChildren || prefab.transform.childCount == 0 )
-								PrefabAsset = new SerializedClipboard( prefab, null, null );
+							if( includeChildren || prefab.transform.childCount == 0 )
+								PrefabAsset = new SerializedClipboard( prefab, null, null, null );
 						}
 						else if( prefabRoot && transform.parent )
 						{
@@ -1202,11 +1377,11 @@ namespace InspectPlusNamespace
 					}
 
 					// Fetch children
-					if( value.includeChildren )
+					if( includeChildren )
 					{
-						Children = new IPGameObjectHierarchy[transform.childCount];
+						Children = new IPGameObjectChild[transform.childCount];
 						for( int i = 0; i < Children.Length; i++ )
-							Children[i] = new IPGameObjectHierarchy( root, new GameObjectHierarchyClipboard( transform.GetChild( i ).gameObject, true ) );
+							Children[i] = new IPGameObjectChild( root, transform.GetChild( i ).gameObject, true );
 					}
 				}
 				finally
@@ -1215,19 +1390,13 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			public override object GetClipboardObject( Object context )
+			public void Serialize( BinaryWriter writer )
 			{
-				return new GameObjectHierarchyClipboard( this );
-			}
-
-			public override void Serialize( BinaryWriter writer )
-			{
-				base.Serialize( writer );
-
 				writer.Write( IsActive );
 				writer.Write( Layer );
 				writer.Write( StaticFlags );
 				writer.Write( HideFlags );
+				SerializeString( writer, Name );
 				SerializeString( writer, Tag != "Untagged" ? Tag : null );
 
 				if( PrefabAsset != null )
@@ -1256,18 +1425,24 @@ namespace InspectPlusNamespace
 					writer.Write( RemovedComponents[i].Index );
 				}
 
-				root.SerializeArray( writer, Children );
+				if( Children == null || Children.Length == 0 )
+					writer.Write( 0 );
+				else
+				{
+					writer.Write( Children.Length );
+
+					for( int i = 0; i < Children.Length; i++ )
+						Children[i].Serialize( writer );
+				}
 			}
 
-			public override void Deserialize( BinaryReader reader )
+			public void Deserialize( SerializedClipboard root, BinaryReader reader )
 			{
-				base.Deserialize( reader );
-
 				IsActive = reader.ReadBoolean();
 				Layer = reader.ReadInt32();
 				StaticFlags = reader.ReadInt32();
 				HideFlags = reader.ReadInt32();
-
+				Name = DeserializeString( reader );
 				Tag = DeserializeString( reader );
 				if( string.IsNullOrEmpty( Tag ) )
 					Tag = "Untagged";
@@ -1294,50 +1469,19 @@ namespace InspectPlusNamespace
 					RemovedComponents[i] = new RemovedComponentInfo( type, reader.ReadInt32() );
 				}
 
-				Children = root.DeserializeArray<IPGameObjectHierarchy>( reader );
-			}
-
-			public GameObject PasteHierarchy( Transform parent )
-			{
-				if( parent && AssetDatabase.Contains( parent ) )
+				int arraySize = reader.ReadInt32();
+				if( arraySize > 0 )
 				{
-					Debug.LogError( "Can't paste Complete GameObject to a prefab or model Asset: " + parent, parent );
-					return null;
-				}
-
-				List<GameObject> hierarchy = new List<GameObject>( Children != null && Children.Length > 0 ? 32 : 0 );
-				List<ComponentToPaste[]> hierarchyComponents = new List<ComponentToPaste[]>( hierarchy.Capacity );
-
-				// Recursively create child GameObjects (and their components). Creating all Components before pasting their
-				// values allows us to restore references between Components (since all the Components will exist while
-				// pasting the Component values)
-				GameObject rootGameObject = null;
-				CreateGameObjectsRecursively( parent, ref rootGameObject, hierarchy, hierarchyComponents );
-
-				// Paste component values
-				bool smartCopyPasteEnabled = InspectPlusSettings.Instance.SmartCopyPaste;
-				try
-				{
-					// Smart copy-paste is mandatory for copy&pasting GameObject hierarchies in order to
-					// be able to restore references between Components properly
-					InspectPlusSettings.Instance.SmartCopyPaste = true;
-
-					for( int i = 0; i < hierarchyComponents.Count; i++ )
+					Children = new IPGameObjectChild[arraySize];
+					for( int i = 0; i < arraySize; i++ )
 					{
-						ComponentToPaste[] componentsToPaste = hierarchyComponents[i];
-						for( int j = 0; j < componentsToPaste.Length; j++ )
-							componentsToPaste[j].SerializedComponent.PasteToObject( componentsToPaste[j].TargetComponent, false );
+						Children[i] = new IPGameObjectChild();
+						Children[i].Deserialize( root, reader );
 					}
 				}
-				finally
-				{
-					InspectPlusSettings.Instance.SmartCopyPaste = smartCopyPasteEnabled;
-				}
-
-				return hierarchy[0];
 			}
 
-			private void CreateGameObjectsRecursively( Transform parent, ref GameObject gameObject, List<GameObject> hierarchy, List<ComponentToPaste[]> hierarchyComponents )
+			public void CreateGameObjectsRecursively( Transform parent, ref GameObject gameObject, List<GameObject> hierarchy, List<ComponentToPaste[]> hierarchyComponents )
 			{
 				bool isPrefabInstance = gameObject;
 				if( !isPrefabInstance )
@@ -1360,6 +1504,8 @@ namespace InspectPlusNamespace
 					Undo.RegisterCreatedObjectUndo( gameObject, "Paste Complete GameObject" );
 					if( parent )
 						Undo.SetTransformParent( gameObject.transform, parent, "Paste Complete GameObject" );
+					else
+						gameObject.transform.SetAsLastSibling();
 				}
 
 				gameObject.SetActive( IsActive );
@@ -1446,7 +1592,7 @@ namespace InspectPlusNamespace
 					}
 					else
 					{
-						List<IPGameObjectHierarchy> childrenList = new List<IPGameObjectHierarchy>( Children );
+						List<IPGameObjectChild> childrenList = new List<IPGameObjectChild>( Children );
 
 						// First, find child GameObjects that were instantiated with this prefab and remove them from children list
 						for( int i = 0; i < gameObject.transform.childCount; i++ )
@@ -1478,12 +1624,7 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			public void PrintHierarchy( StringBuilder sb )
-			{
-				PrintHierarchyRecursively( sb, 0 );
-			}
-
-			private void PrintHierarchyRecursively( StringBuilder sb, int depth )
+			public void PrintHierarchyRecursively( StringBuilder sb, int depth )
 			{
 				for( int i = 0; i < depth; i++ )
 					sb.Append( "   " );
@@ -1494,6 +1635,136 @@ namespace InspectPlusNamespace
 				{
 					for( int i = 0; i < Children.Length; i++ )
 						Children[i].PrintHierarchyRecursively( sb, depth + 1 );
+				}
+			}
+		}
+
+		public class IPAssetFiles : IPObject
+		{
+			public string[] Paths;
+
+			public IPAssetFiles( SerializedClipboard root ) : base( root ) { }
+			public IPAssetFiles( SerializedClipboard root, string name, AssetFilesClipboard value ) : base( root, name )
+			{
+				Paths = value.paths;
+			}
+
+			public override object GetClipboardObject( Object context )
+			{
+				return new AssetFilesClipboard( Paths );
+			}
+
+			public override void Serialize( BinaryWriter writer )
+			{
+				base.Serialize( writer );
+
+				writer.Write( Paths.Length );
+				for( int i = 0; i < Paths.Length; i++ )
+					SerializeString( writer, Paths[i] );
+			}
+
+			public override void Deserialize( BinaryReader reader )
+			{
+				base.Deserialize( reader );
+
+				Paths = new string[reader.ReadInt32()];
+				for( int i = 0; i < Paths.Length; i++ )
+					Paths[i] = DeserializeString( reader );
+			}
+
+			public string[] PasteFiles( string[] parentFolders )
+			{
+				string[][] pastes = new string[Paths.Length][];
+				bool hasConflicts = false;
+				for( int i = 0; i < Paths.Length; i++ )
+				{
+					if( !File.Exists( Paths[i] ) && !Directory.Exists( Paths[i] ) )
+						continue;
+
+					pastes[i] = new string[parentFolders.Length];
+
+					for( int j = 0; j < parentFolders.Length; j++ )
+					{
+						if( string.IsNullOrEmpty( parentFolders[j] ) || !Directory.Exists( parentFolders[j] ) )
+							continue;
+
+						pastes[i][j] = Path.Combine( parentFolders[j], Path.GetFileName( Paths[i] ) );
+						if( !hasConflicts && ( File.Exists( pastes[i][j] ) || Directory.Exists( pastes[i][j] ) ) )
+							hasConflicts = true;
+					}
+				}
+
+				bool overwriteConflicts = true;
+				if( hasConflicts )
+				{
+					int conflictDialog = EditorUtility.DisplayDialogComplex( "Overwrite", "Some files already exist in the destination.", "Replace", "Cancel", "Rename" );
+					if( conflictDialog == 1 )
+						return new string[0];
+
+					overwriteConflicts = conflictDialog == 0;
+				}
+
+				List<string> result = new List<string>( Paths.Length * parentFolders.Length );
+
+				AssetDatabase.StartAssetEditing();
+				try
+				{
+					for( int i = 0; i < pastes.Length; i++ )
+					{
+						if( pastes[i] == null )
+							continue;
+
+						string sourcePath = Paths[i];
+						bool isSourceFile = File.Exists( sourcePath );
+
+						string[] _pastes = pastes[i];
+						for( int j = 0; j < _pastes.Length; j++ )
+						{
+							if( string.IsNullOrEmpty( _pastes[j] ) )
+								continue;
+
+							string destinationPath = overwriteConflicts ? _pastes[j] : AssetDatabase.GenerateUniqueAssetPath( _pastes[j] );
+							if( sourcePath == destinationPath )
+								continue;
+
+							if( isSourceFile )
+								File.Copy( sourcePath, destinationPath, true );
+							else
+							{
+								if( !Directory.Exists( destinationPath ) )
+									Directory.CreateDirectory( destinationPath );
+
+								CopyDirectory( new DirectoryInfo( sourcePath ), ( destinationPath.EndsWith( "/" ) || destinationPath.EndsWith( "\\" ) ) ? destinationPath : ( destinationPath + Path.DirectorySeparatorChar ) );
+							}
+
+							if( File.Exists( sourcePath + ".meta" ) )
+								File.Copy( sourcePath + ".meta", destinationPath + ".meta", true );
+
+							result.Add( destinationPath );
+						}
+					}
+				}
+				finally
+				{
+					AssetDatabase.StopAssetEditing();
+					AssetDatabase.Refresh();
+				}
+
+				return result.ToArray();
+			}
+
+			private void CopyDirectory( DirectoryInfo fromDir, string toAbsolutePath )
+			{
+				FileInfo[] files = fromDir.GetFiles();
+				for( int i = 0; i < files.Length; i++ )
+					files[i].CopyTo( toAbsolutePath + files[i].Name, true );
+
+				DirectoryInfo[] subDirectories = fromDir.GetDirectories();
+				for( int i = 0; i < subDirectories.Length; i++ )
+				{
+					string directoryAbsolutePath = toAbsolutePath + subDirectories[i].Name + Path.DirectorySeparatorChar;
+					Directory.CreateDirectory( directoryAbsolutePath );
+					CopyDirectory( subDirectories[i], directoryAbsolutePath );
 				}
 			}
 		}
@@ -1741,6 +2012,7 @@ namespace InspectPlusNamespace
 			{ typeof( IPSceneObject ), IPObjectType.SceneObject },
 			{ typeof( IPSceneObjectReference ), IPObjectType.SceneObjectReference },
 			{ typeof( IPGameObjectHierarchy ), IPObjectType.GameObjectHierarchy },
+			{ typeof( IPAssetFiles ), IPObjectType.AssetFiles },
 			{ typeof( IPManagedObject ), IPObjectType.ManagedObject },
 			{ typeof( IPManagedReference ), IPObjectType.ManagedReference },
 			{ typeof( IPArray ), IPObjectType.Array },
@@ -1757,6 +2029,7 @@ namespace InspectPlusNamespace
 		private static readonly Dictionary<Type, IPObjectType> typeToEnumLookup = new Dictionary<Type, IPObjectType>()
 		{
 			{ typeof( GameObjectHierarchyClipboard ), IPObjectType.GameObjectHierarchy },
+			{ typeof( AssetFilesClipboard ), IPObjectType.AssetFiles },
 			{ typeof( ManagedObjectClipboard ), IPObjectType.ManagedObject },
 			{ typeof( ArrayClipboard ), IPObjectType.Array },
 			{ typeof( GenericObjectClipboard ), IPObjectType.GenericObject },
@@ -1802,7 +2075,10 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		public bool HasTooltip { get { return Values.Length > 1 || RootValue is IPGameObjectHierarchy; } }
+		// When the SerializedClipboard is created from a SerializedProperty, its root value's Name won't be empty
+		public bool HasSerializedPropertyOrigin { get { return !string.IsNullOrEmpty( RootValue.Name ); } }
+
+		public bool HasTooltip { get { return Values.Length > 1 || RootValue is IPGameObjectHierarchy || RootValue is IPAssetFiles; } }
 
 		public string Label;
 		private GUIContent m_labelContent;
@@ -1821,6 +2097,18 @@ namespace InspectPlusNamespace
 
 						sb.Append( "Complete GameObject Hierarchy:\n\n" );
 						( (IPGameObjectHierarchy) RootValue ).PrintHierarchy( sb );
+
+						m_labelContent = new GUIContent( Label, sb.ToString() );
+					}
+					else if( RootValue is IPAssetFiles )
+					{
+						StringBuilder sb = Utilities.stringBuilder;
+						sb.Length = 0;
+
+						sb.Append( "Asset Files:\n\n" );
+						string[] paths = ( (IPAssetFiles) RootValue ).Paths;
+						for( int i = 0; i < paths.Length; i++ )
+							sb.Append( "- " ).Append( paths[i] ).Append( "\n" );
 
 						m_labelContent = new GUIContent( Label, sb.ToString() );
 					}
@@ -1889,21 +2177,21 @@ namespace InspectPlusNamespace
 			Deserialize( reader );
 		}
 
-		public SerializedClipboard( object clipboardData, Object source, string label )
+		public SerializedClipboard( object clipboardData, Object source, string name, string label )
 		{
 			Label = label;
 
 			// For Component, ScriptableObject and materials, serialize the fields as well (for name-based paste operations)
 			if( clipboardData is Component || clipboardData is ScriptableObject || clipboardData is Material )
-				InitializeWithUnityObject( (Object) clipboardData, source );
+				InitializeWithUnityObject( (Object) clipboardData, source, name );
 			else
 			{
-				Values = new IPObject[1] { ConvertClipboardObjectToIPObject( clipboardData, null, source ) };
+				Values = new IPObject[1] { ConvertClipboardObjectToIPObject( clipboardData, name, source ) };
 				Initialize( source );
 			}
 		}
 
-		private void InitializeWithUnityObject( Object value, Object source )
+		private void InitializeWithUnityObject( Object value, Object source, string name )
 		{
 			SerializedObject serializedObject = new SerializedObject( value );
 			int valueCount = 0;
@@ -1915,7 +2203,7 @@ namespace InspectPlusNamespace
 			}
 
 			IPObject[] serializedValues = new IPObject[valueCount + 1];
-			serializedValues[0] = ConvertClipboardObjectToIPObject( value, null, source );
+			serializedValues[0] = ConvertClipboardObjectToIPObject( value, name, source );
 
 			if( valueCount > 0 )
 			{
@@ -2049,7 +2337,8 @@ namespace InspectPlusNamespace
 			{
 				case IPObjectType.Array: return new IPArray( this, name, (ArrayClipboard) obj, source );
 				case IPObjectType.GenericObject: return new IPGenericObject( this, name, (GenericObjectClipboard) obj, source );
-				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this, (GameObjectHierarchyClipboard) obj );
+				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this, name, (GameObjectHierarchyClipboard) obj );
+				case IPObjectType.AssetFiles: return new IPAssetFiles( this, name, (AssetFilesClipboard) obj );
 				case IPObjectType.Vector: return new IPVector( this, name, (VectorClipboard) obj );
 				case IPObjectType.Color: return new IPColor( this, name, (Color) obj );
 				case IPObjectType.Long: return new IPLong( this, name, (long) obj );
@@ -2088,6 +2377,7 @@ namespace InspectPlusNamespace
 				case IPObjectType.SceneObject: return new IPSceneObject( this );
 				case IPObjectType.SceneObjectReference: return new IPSceneObjectReference( this );
 				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this );
+				case IPObjectType.AssetFiles: return new IPAssetFiles( this );
 				case IPObjectType.ManagedObject: return new IPManagedObject( this );
 				case IPObjectType.ManagedReference: return new IPManagedReference( this );
 				case IPObjectType.Array: return new IPArray( this );
@@ -2153,6 +2443,16 @@ namespace InspectPlusNamespace
 				return false;
 
 			return !parent || !AssetDatabase.Contains( parent );
+		}
+
+		public bool CanPasteAssetFiles( Object[] parentFolders )
+		{
+			return parentFolders.Length > 0 && RootValue is IPAssetFiles;
+		}
+
+		public bool CanPasteAssetFiles( string[] parentFolders )
+		{
+			return parentFolders.Length > 0 && RootValue is IPAssetFiles;
 		}
 
 		public void PasteToObject( Object target, bool logModifiedProperties = true )
@@ -2231,9 +2531,49 @@ namespace InspectPlusNamespace
 			return newComponent;
 		}
 
-		public GameObject PasteCompleteGameObject( GameObject parent )
+		public GameObject[] PasteCompleteGameObject( GameObject parent, bool preserveWorldSpacePosition )
 		{
-			return ( (IPGameObjectHierarchy) RootValue ).PasteHierarchy( parent ? parent.transform : null );
+			GameObject[] result = ( (IPGameObjectHierarchy) RootValue ).PasteHierarchy( parent ? parent.transform : null, preserveWorldSpacePosition );
+			Selection.objects = result;
+			return result;
+		}
+
+		public string[] PasteAssetFiles( Object[] parentFolders, bool logPastedFiles = true )
+		{
+			string[] _parentFolders = new string[parentFolders.Length];
+			for( int i = 0; i < parentFolders.Length; i++ )
+				_parentFolders[i] = AssetDatabase.GetAssetPath( parentFolders[i] );
+
+			return PasteAssetFiles( _parentFolders, logPastedFiles );
+		}
+
+		public string[] PasteAssetFiles( string[] parentFolders, bool logPastedFiles = true )
+		{
+			Utilities.ConvertAbsolutePathsToRelativePaths( parentFolders );
+
+			string[] result = ( (IPAssetFiles) RootValue ).PasteFiles( parentFolders );
+			if( result.Length > 0 )
+			{
+				if( logPastedFiles )
+				{
+					StringBuilder sb = Utilities.stringBuilder;
+					sb.Length = 0;
+
+					sb.AppendLine( "Pasted asset file(s):" );
+					for( int i = 0; i < result.Length; i++ )
+						sb.Append( "- " ).AppendLine( result[i] );
+
+					Debug.Log( sb.ToString() );
+				}
+
+				Object[] selection = new Object[result.Length];
+				for( int i = 0; i < result.Length; i++ )
+					selection[i] = AssetDatabase.LoadMainAssetAtPath( result[i] );
+
+				Selection.objects = selection;
+			}
+
+			return result;
 		}
 		#endregion
 

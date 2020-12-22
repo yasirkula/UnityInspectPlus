@@ -15,23 +15,32 @@ namespace InspectPlusNamespace
 		#region Helper Classes
 		public class GameObjectHierarchyClipboard
 		{
-			public readonly GameObject source;
+			public readonly GameObject[] source;
 			public readonly bool includeChildren;
+			public readonly string name;
 
-			public readonly IPGameObjectHierarchy serializedData;
-
-			public GameObjectHierarchyClipboard( GameObject source, bool includeChildren )
+			public GameObjectHierarchyClipboard( GameObject[] source, bool includeChildren )
 			{
 				this.source = source;
 				this.includeChildren = includeChildren;
-				this.serializedData = null;
+				this.name = source[0].name;
 			}
 
-			public GameObjectHierarchyClipboard( IPGameObjectHierarchy serializedData )
+			public GameObjectHierarchyClipboard( string name )
 			{
 				this.source = null;
 				this.includeChildren = true;
-				this.serializedData = serializedData;
+				this.name = name;
+			}
+		}
+
+		public class AssetFilesClipboard
+		{
+			public readonly string[] paths;
+
+			public AssetFilesClipboard( string[] paths )
+			{
+				this.paths = paths;
 			}
 		}
 
@@ -317,9 +326,19 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		public static void PasteValue( this SerializedProperty property, IPObject clipboard )
+		public static void PasteValue( this SerializedProperty property, SerializedClipboard clipboard )
 		{
-			if( property.serializedObject.isEditingMultipleObjects && InspectPlusSettings.Instance.SmartCopyPaste )
+			// There is one edge case in Smart Copy & Paste system:
+			// Imagine right clicking object A's Transform and copying it with Inspect+. Serialized component's RelativePath will
+			// point to self (Transform itself). Now, imagine right clicking a property of object B in the Inspector and pasting
+			// the copied Transform there. Normally, if SmartCopyPaste is enabled, B.property would now point to B because RelativePath
+			// (which is 'self') would be resolved to object B. However, in this scenario, regardless of the value of SmartCopyPaste,
+			// we'd expect B.property to point to A because we are explicity copying A's Transform and pasting it to B. If we had wanted
+			// to paste object B itself to B.property, we'd simply drag&drop B from Hierarchy to B.property. So, in this scenario, we must ignore
+			// the value of SmartCopyPaste. One way of doing it is to pass null to GetClipboardObject
+			bool shouldIgnoreSmartCopyPaste = ( property.propertyType == SerializedPropertyType.ObjectReference || property.propertyType == SerializedPropertyType.ExposedReference ) && !clipboard.HasSerializedPropertyOrigin;
+
+			if( property.serializedObject.isEditingMultipleObjects && InspectPlusSettings.Instance.SmartCopyPaste && !shouldIgnoreSmartCopyPaste )
 			{
 				// Smart paste should be applied to each selected Object separately
 				Object[] targetObjects = property.serializedObject.targetObjects;
@@ -328,11 +347,11 @@ namespace InspectPlusNamespace
 				for( int i = 0; i < targetObjects.Length; i++ )
 				{
 					SerializedProperty _property = new SerializedObject( targetObjects[i], context ).FindProperty( propertyPath );
-					PasteValue( _property, clipboard.GetClipboardObject( targetObjects[i] ), true );
+					PasteValue( _property, clipboard.RootValue.GetClipboardObject( targetObjects[i] ), true );
 				}
 			}
 			else
-				PasteValue( property, clipboard.GetClipboardObject( property.serializedObject.targetObject ), true );
+				PasteValue( property, clipboard.RootValue.GetClipboardObject( shouldIgnoreSmartCopyPaste ? null : property.serializedObject.targetObject ), true );
 		}
 
 		public static void PasteValue( this SerializedProperty property, object clipboard, bool applyModifiedProperties )
