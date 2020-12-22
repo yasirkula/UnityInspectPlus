@@ -358,7 +358,9 @@ namespace InspectPlusNamespace
 		{
 			switch( property.propertyType )
 			{
-				case SerializedPropertyType.AnimationCurve: property.animationCurveValue = (AnimationCurve) clipboard; break;
+				case SerializedPropertyType.AnimationCurve:
+					if( clipboard is AnimationCurve ) property.animationCurveValue = (AnimationCurve) clipboard;
+					break;
 				case SerializedPropertyType.ArraySize:
 					if( clipboard is long ) property.arraySize = (int) (long) clipboard;
 					else if( clipboard is double ) property.arraySize = (int) (double) clipboard;
@@ -368,9 +370,13 @@ namespace InspectPlusNamespace
 					else if( clipboard is long ) property.boolValue = ( (long) clipboard ) != 0L;
 					else if( clipboard is double ) property.boolValue = ( (double) clipboard ) != 0.0;
 					break;
-				case SerializedPropertyType.Bounds: property.boundsValue = (VectorClipboard) clipboard; break;
+				case SerializedPropertyType.Bounds:
+					if( clipboard is VectorClipboard ) property.boundsValue = (VectorClipboard) clipboard;
+					break;
 #if UNITY_2017_2_OR_NEWER
-				case SerializedPropertyType.BoundsInt: property.boundsIntValue = (VectorClipboard) clipboard; break;
+				case SerializedPropertyType.BoundsInt:
+					if( clipboard is VectorClipboard ) property.boundsIntValue = (VectorClipboard) clipboard;
+					break;
 #endif
 				case SerializedPropertyType.Character:
 					if( clipboard is long ) property.intValue = (int) (long) clipboard;
@@ -380,23 +386,29 @@ namespace InspectPlusNamespace
 					if( clipboard is Color ) property.colorValue = (Color) clipboard;
 					else if( clipboard is VectorClipboard ) property.colorValue = (VectorClipboard) clipboard;
 					break;
-				case SerializedPropertyType.Enum: property.intValue = (int) (long) clipboard; break;
+				case SerializedPropertyType.Enum:
+					if( clipboard is long ) property.intValue = (int) (long) clipboard;
+					break;
 				case SerializedPropertyType.ExposedReference: TryAssignClipboardToObjectProperty( property, clipboard, false ); break;
 				case SerializedPropertyType.Float:
 					if( clipboard is long ) property.doubleValue = (long) clipboard;
 					else if( clipboard is double ) property.doubleValue = (double) clipboard;
 					break;
-				case SerializedPropertyType.Gradient: gradientValueGetter.SetValue( property, clipboard, null ); break;
+				case SerializedPropertyType.Gradient:
+					if( clipboard is Gradient ) gradientValueGetter.SetValue( property, clipboard, null );
+					break;
 				case SerializedPropertyType.Integer:
 					if( clipboard is long ) property.longValue = (long) clipboard;
 					else if( clipboard is double ) property.longValue = (long) (double) clipboard;
 					break;
-				case SerializedPropertyType.LayerMask: property.intValue = (int) (long) clipboard; break;
+				case SerializedPropertyType.LayerMask:
+					if( clipboard is long ) property.intValue = (int) (long) clipboard;
+					break;
 #if UNITY_2019_3_OR_NEWER
 				case SerializedPropertyType.ManagedReference:
 					if( clipboard == null )
 						property.managedReferenceValue = null;
-					else
+					else if( clipboard is ManagedObjectClipboard )
 					{
 						// property.managedReferenceValue copies the value, so assigning the same value to 2 different
 						// SerializedProperty's managedReferenceValue will result in 2 copies of that value, which is not the
@@ -431,18 +443,25 @@ namespace InspectPlusNamespace
 #endif
 				case SerializedPropertyType.ObjectReference: TryAssignClipboardToObjectProperty( property, clipboard, false ); break;
 				case SerializedPropertyType.Quaternion:
-					// Special case: paste Transform's Rotation as localEulerAngles instead of localRotation
-					if( property.name == "m_LocalRotation" && property.serializedObject.targetObject is Transform && (InspectorMode) inspectorModeGetter.GetValue( property.serializedObject, null ) == InspectorMode.Normal )
-						property.quaternionValue = Quaternion.Euler( (VectorClipboard) clipboard );
-					else
-						property.quaternionValue = (VectorClipboard) clipboard;
+					if( clipboard is VectorClipboard )
+					{
+						// Special case: paste Transform's Rotation as localEulerAngles instead of localRotation
+						if( property.name == "m_LocalRotation" && property.serializedObject.targetObject is Transform && (InspectorMode) inspectorModeGetter.GetValue( property.serializedObject, null ) == InspectorMode.Normal )
+							property.quaternionValue = Quaternion.Euler( (VectorClipboard) clipboard );
+						else
+							property.quaternionValue = (VectorClipboard) clipboard;
+					}
 
 					break;
-				case SerializedPropertyType.Rect: property.rectValue = (VectorClipboard) clipboard; break;
+				case SerializedPropertyType.Rect:
+					if( clipboard is VectorClipboard ) property.rectValue = (VectorClipboard) clipboard;
+					break;
 #if UNITY_2017_2_OR_NEWER
-				case SerializedPropertyType.RectInt: property.rectIntValue = (VectorClipboard) clipboard; break;
+				case SerializedPropertyType.RectInt:
+					if( clipboard is VectorClipboard ) property.rectIntValue = (VectorClipboard) clipboard;
+					break;
 #endif
-				case SerializedPropertyType.String: property.stringValue = clipboard.ToString(); break;
+				case SerializedPropertyType.String: property.stringValue = clipboard != null ? clipboard.ToString() : ""; break;
 				case SerializedPropertyType.Vector2:
 					if( clipboard is VectorClipboard ) property.vector2Value = (VectorClipboard) clipboard;
 					else if( clipboard is Color ) property.vector2Value = (VectorClipboard) (Color) clipboard;
@@ -468,7 +487,7 @@ namespace InspectPlusNamespace
 					else if( clipboard is Color ) property.vector4Value = (VectorClipboard) (Color) clipboard;
 					break;
 				case SerializedPropertyType.Generic:
-					if( property.isArray )
+					if( property.isArray && clipboard is ArrayClipboard )
 					{
 						ArrayClipboard array = (ArrayClipboard) clipboard;
 						property.arraySize = array.elements.Length;
@@ -479,7 +498,7 @@ namespace InspectPlusNamespace
 						}
 					}
 #if UNITY_2017_1_OR_NEWER
-					else if( property.isFixedBuffer )
+					else if( property.isFixedBuffer && clipboard is ArrayClipboard )
 					{
 						ArrayClipboard array = (ArrayClipboard) clipboard;
 						int count = Mathf.Min( array.elements.Length, property.fixedBufferSize );
@@ -490,7 +509,7 @@ namespace InspectPlusNamespace
 						}
 					}
 #endif
-					else if( property.hasChildren )
+					else if( property.hasChildren && clipboard is GenericObjectClipboard )
 					{
 						GenericObjectClipboard obj = (GenericObjectClipboard) clipboard;
 						if( obj.variables.Length > 0 )

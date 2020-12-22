@@ -83,6 +83,9 @@ namespace InspectPlusNamespace
 			private Type m_type;
 			public Type Type { get { return (Type) GetClipboardObject( null ); } } // Useful shorthand property
 
+			// AssemblyQualifiedName -> Type lookup table to quickly resolve commonly used types
+			private static readonly Dictionary<string, Type> typeLookupTable = new Dictionary<string, Type>( 64 );
+
 			public IPType( SerializedClipboard root ) : base( root ) { }
 			public IPType( SerializedClipboard root, Type type ) : base( root, type.Name )
 			{
@@ -92,59 +95,81 @@ namespace InspectPlusNamespace
 			public override object GetClipboardObject( Object context )
 			{
 				// We want to call Type.GetType only once but it can return null. Thus, we aren't using "if( type == null )"
-				if( !typeRecreated )
+				if( typeRecreated )
+					return m_type;
+
+				typeRecreated = true;
+
+				if( typeLookupTable.TryGetValue( AssemblyQualifiedName, out m_type ) )
+					return m_type;
+
+				try
 				{
-					typeRecreated = true;
-
 					m_type = Type.GetType( AssemblyQualifiedName );
-					if( m_type == null )
+					if( m_type != null )
+						return m_type;
+
+					// Unity classes' AssemblyQualifiedNames can change between Unity versions but their FullNames usually stay the same
+					int fullNameEndIndex = AssemblyQualifiedName.IndexOf( ',' );
+					if( fullNameEndIndex >= 0 )
 					{
-						// Unity classes' AssemblyQualifiedNames can change between Unity versions but their FullNames usually stay the same
-						int fullNameEndIndex = AssemblyQualifiedName.IndexOf( ',' );
-						if( fullNameEndIndex >= 0 )
+						string typeFullName = AssemblyQualifiedName.Substring( 0, fullNameEndIndex );
+						if( typeFullName.StartsWith( "UnityEngine" ) )
 						{
-							string typeFullName = AssemblyQualifiedName.Substring( 0, fullNameEndIndex );
-							if( typeFullName.StartsWith( "UnityEngine" ) )
+							// A very common Assembly change is UnityEngine <-> UnityEngine.CoreModule 
+							if( AssemblyQualifiedName.Contains( "UnityEngine.CoreModule," ) )
 							{
-								// A very common Assembly change is UnityEngine <-> UnityEngine.CoreModule 
-								if( AssemblyQualifiedName.Contains( "UnityEngine.CoreModule," ) )
-								{
-									// Type conversion from newer Unity versions to older Unity versions
-									m_type = Type.GetType( AssemblyQualifiedName.Replace( "UnityEngine.CoreModule,", "UnityEngine," ) );
-								}
-								else if( AssemblyQualifiedName.Contains( "UnityEngine," ) )
-								{
-									// Type conversion from older Unity versions to newer Unity versions
-									m_type = Type.GetType( AssemblyQualifiedName.Replace( "UnityEngine,", "UnityEngine.CoreModule," ) );
-								}
+								// Type conversion from newer Unity versions to older Unity versions
+								m_type = Type.GetType( AssemblyQualifiedName.Replace( "UnityEngine.CoreModule,", "UnityEngine," ) );
+							}
+							else if( AssemblyQualifiedName.Contains( "UnityEngine," ) )
+							{
+								// Type conversion from older Unity versions to newer Unity versions
+								m_type = Type.GetType( AssemblyQualifiedName.Replace( "UnityEngine,", "UnityEngine.CoreModule," ) );
+							}
 
-								// Search all loaded Unity assemblies for the type
-								if( m_type == null )
+							// Search all loaded Unity assemblies for the type
+							if( m_type != null )
+								return m_type;
+
+							foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+							{
+								if( !assembly.FullName.StartsWith( "UnityEngine" ) )
+									continue;
+
+								foreach( Type type in assembly.GetExportedTypes() )
 								{
-									foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+									if( type.FullName == typeFullName )
 									{
-										if( !assembly.FullName.StartsWith( "UnityEngine" ) )
-											continue;
-
-										foreach( Type type in assembly.GetExportedTypes() )
-										{
-											if( type.FullName == typeFullName )
-											{
-												m_type = type;
-												break;
-											}
-										}
-
-										if( m_type != null )
-											break;
+										m_type = type;
+										return m_type;
+									}
+								}
+							}
+						}
+						else
+						{
+							// Search all loaded assemblies for the type
+							foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+							{
+								foreach( Type type in assembly.GetExportedTypes() )
+								{
+									if( type.FullName == typeFullName )
+									{
+										m_type = type;
+										return m_type;
 									}
 								}
 							}
 						}
 					}
-				}
 
-				return m_type;
+					return m_type;
+				}
+				finally
+				{
+					typeLookupTable[AssemblyQualifiedName] = m_type;
+				}
 			}
 
 			public override void Serialize( BinaryWriter writer )
@@ -765,7 +790,9 @@ namespace InspectPlusNamespace
 						pathIterateTarget = openPrefabStage.prefabContentsRoot.transform.parent;
 					else
 #endif
-					SceneName = transform.gameObject.scene.name;
+					{
+						SceneName = transform.gameObject.scene.name;
+					}
 
 					// Calculate Path
 					List<PathComponent> pathComponents = new List<PathComponent>( 5 );
@@ -1559,6 +1586,22 @@ namespace InspectPlusNamespace
 
 					for( ; componentIndex < validComponents[i].Index; componentIndex++ )
 						targetComponent = Undo.AddComponent( gameObject, componentType );
+
+					// In the following edge case, Undo.AddComponent may return null:
+					// GameObject has 2 components: Image and SomeComponent. In project A, SomeComponent doesn't have any dependencies.
+					// In project B, SomeComponent's implementation differs from project A such that SomeComponent now has a
+					// RequireComponent(Text) attribute. When pasting the GameObject to project B, Unity will complain at Undo.AddComponent:
+					// "Can't add 'Text' to object because a 'Image' is already added to the game object!"
+					// That's because in this project, trying to add SomeComponent to the GameObject will force Unity to add a Text component
+					// to the same GameObject but it will fail because only 1 Graphic component can exist on an object and that is the Image
+					// component in this case. Hence, Undo.AddComponent will set targetComponent to null
+					if( !targetComponent )
+					{
+						Array.Resize( ref componentsToPaste, componentsToPaste.Length - 1 );
+						validComponents.RemoveAt( i-- );
+
+						continue;
+					}
 
 					// We can paste the values of enabled and hideFlags immediately, though
 					targetComponent.hideFlags = (HideFlags) validComponents[i].HideFlags;

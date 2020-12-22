@@ -55,8 +55,9 @@ namespace InspectPlusNamespace
 				mainWindow.ShowPopup();
 			}
 
-			mainWindow.position = preferredPosition;
 			PasteBinTooltip.tooltip = tooltip;
+			mainWindow.position = preferredPosition;
+			mainWindow.Repaint();
 
 			prevFocusedWindow.Focus();
 		}
