@@ -2,5 +2,8 @@
   "name": "com.yasirkula.inspectplus",
   "displayName": "Inspect+",
   "version": "1.7.1",
+  "documentationUrl": "https://github.com/yasirkula/UnityInspectPlus",
+  "changelogUrl": "https://github.com/yasirkula/UnityInspectPlus/releases",
+  "licensesUrl": "https://github.com/yasirkula/UnityInspectPlus/blob/master/LICENSE.txt",
   "description": "This plugin helps you view an object's Inspector in a separate tab/window, copy&paste the values of variables in the Inspector and inspect all variables of an object (including non-serializable and static variables) in an enhanced Debug mode."
 }
