@@ -134,7 +134,10 @@ namespace InspectPlusNamespace
 
 		private void CheckWindowFocusRegularly()
 		{
-			if( focusedWindow != this || EditorApplication.isCompiling )
+			// Happens in rare cases
+			if( !this )
+				EditorApplication.update -= CheckWindowFocusRegularly;
+			else if( focusedWindow != this || EditorApplication.isCompiling )
 				Close();
 		}
 

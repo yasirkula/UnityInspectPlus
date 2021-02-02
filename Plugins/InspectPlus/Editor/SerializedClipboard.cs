@@ -136,14 +136,27 @@ namespace InspectPlusNamespace
 							{
 								if( !assembly.FullName.StartsWith( "UnityEngine" ) )
 									continue;
+#if NET_4_6 || NET_STANDARD_2_0
+								if( assembly.IsDynamic )
+									continue;
+#endif
 
-								foreach( Type type in assembly.GetExportedTypes() )
+								try
 								{
-									if( type.FullName == typeFullName )
+									foreach( Type type in assembly.GetExportedTypes() )
 									{
-										m_type = type;
-										return m_type;
+										if( type.FullName == typeFullName )
+										{
+											m_type = type;
+											return m_type;
+										}
 									}
+								}
+								catch( NotSupportedException ) { }
+								catch( FileNotFoundException ) { }
+								catch( Exception e )
+								{
+									Debug.LogError( "Couldn't search assembly for type: " + assembly.GetName().Name + "\n" + e.ToString() );
 								}
 							}
 						}
@@ -152,13 +165,27 @@ namespace InspectPlusNamespace
 							// Search all loaded assemblies for the type
 							foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
 							{
-								foreach( Type type in assembly.GetExportedTypes() )
+#if NET_4_6 || NET_STANDARD_2_0
+								if( assembly.IsDynamic )
+									continue;
+#endif
+
+								try
 								{
-									if( type.FullName == typeFullName )
+									foreach( Type type in assembly.GetExportedTypes() )
 									{
-										m_type = type;
-										return m_type;
+										if( type.FullName == typeFullName )
+										{
+											m_type = type;
+											return m_type;
+										}
 									}
+								}
+								catch( NotSupportedException ) { }
+								catch( FileNotFoundException ) { }
+								catch( Exception e )
+								{
+									Debug.LogError( "Couldn't search assembly for type: " + assembly.GetName().Name + "\n" + e.ToString() );
 								}
 							}
 						}
