@@ -94,12 +94,16 @@ namespace InspectPlusNamespace
 		private static MethodInfo showApplyRevertDialogMethod;
 #endif
 
+		private static FieldInfo editorWindowDockAreaField;
+		private static MethodInfo dockAreaAddTabMethod;
+
 		// Serializing CustomProjectWindow makes the TreeView's state (collapsed entries etc.) persist between editor sessions
 		[SerializeField]
 		private CustomProjectWindow projectWindow = new CustomProjectWindow();
 		private bool showProjectWindow;
 		private bool syncProjectWindowSelection;
 		private Editor projectWindowSelectionEditor;
+		private InspectPlusWindow projectWindowBoundInspector;
 
 #if UNITY_2017_2_OR_NEWER
 		private bool changingPlayMode;
@@ -113,7 +117,8 @@ namespace InspectPlusNamespace
 		private Vector2 buttonPressPosition;
 		private double nextUpdateTime;
 		private double nextAnimationRepaintTime;
-		private bool objectBrowserWindowVisible;
+
+		private ObjectBrowserWindow objectBrowserWindow;
 		private double objectBrowserWindowCloseTime;
 
 		private bool showFavorites, showHistory;
@@ -190,8 +195,19 @@ namespace InspectPlusNamespace
 			showApplyRevertDialogMethod = typeof( AssetImporterEditor ).GetMethod( "CheckForApplyOnClose", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
 #endif
 
+			editorWindowDockAreaField = typeof( EditorWindow ).GetField( "m_Parent", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
+			Type dockAreaType = typeof( EditorWindow ).Assembly.GetType( "UnityEditor.DockArea" );
+			if( dockAreaType != null )
+			{
+#if UNITY_2018_3_OR_NEWER
+				dockAreaAddTabMethod = dockAreaType.GetMethod( "AddTab", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new Type[2] { typeof( EditorWindow ), typeof( bool ) }, null );
+#else
+				dockAreaAddTabMethod = dockAreaType.GetMethod( "AddTab", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new Type[1] { typeof( EditorWindow ) }, null );
+#endif
+			}
+
 			favoritesIconNoTooltip = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture );
-			historyIconNoTooltip = new GUIContent( EditorGUIUtility.Load( "Search Icon" ) as Texture );
+			historyIconNoTooltip = new GUIContent( EditorGUIUtility.Load( EditorGUIUtility.isProSkin ? "Search On Icon" : "Search Icon" ) as Texture );
 			favoritesIcon = new GUIContent( favoritesIconNoTooltip.image, "Favorites" );
 			historyIcon = new GUIContent( historyIconNoTooltip.image, "History" );
 
@@ -246,16 +262,7 @@ namespace InspectPlusNamespace
 			}
 			else
 			{
-				for( int i = 0; i < inspectorDrawers.Count; i++ )
-					DestroyImmediate( inspectorDrawers[i] );
-
-				inspectorDrawers.Clear();
-				inspectorDrawerCount = 0;
-				debugModeDrawerCount = 0;
-
-				DestroyImmediate( projectWindowSelectionEditor );
-				projectWindowSelectionEditor = null;
-
+				CleanUpDrawers();
 				previewHeight = EditorPrefs.GetFloat( PREVIEW_HEIGHT_PREF, PREVIEW_INITIAL_HEIGHT );
 			}
 
@@ -285,6 +292,9 @@ namespace InspectPlusNamespace
 
 			historyHolder.Clear();
 			favoritesHolder.Clear();
+
+			if( !mainObject )
+				CleanUpDrawers();
 
 			if( mainWindow == this )
 				mainWindow = null;
@@ -321,6 +331,10 @@ namespace InspectPlusNamespace
 		private void OnUndoRedo()
 		{
 			shouldRepaint = true;
+
+			// Inspected object was deleted but now this deletion is undo'ed
+			if( inspectorDrawerCount == 0 && mainObject )
+				pendingInspectTarget = mainObject;
 		}
 
 #if UNITY_2017_2_OR_NEWER
@@ -405,13 +419,26 @@ namespace InspectPlusNamespace
 
 			if( showProjectWindow )
 			{
-				menu.AddItem( new GUIContent( "Synchronize Selection" ), syncProjectWindowSelection, () =>
+				menu.AddItem( new GUIContent( "Synchronize Selection With Unity" ), syncProjectWindowSelection, () =>
 				{
 					syncProjectWindowSelection = !syncProjectWindowSelection;
 
 					CustomProjectWindowDrawer treeView = projectWindow.GetTreeView();
 					if( treeView != null )
 						treeView.SyncSelection = syncProjectWindowSelection;
+				} );
+
+				menu.AddItem( new GUIContent( "Synchronize Selection With Inspect+" ), projectWindowBoundInspector, () =>
+				{
+					if( projectWindowBoundInspector )
+						projectWindowBoundInspector = null;
+					else
+					{
+						projectWindowBoundInspector = GetNewWindow();
+
+						if( projectWindow.GetTreeView() != null )
+							ProjectWindowSelectionChanged( projectWindow.GetTreeView().GetSelection() );
+					}
 				} );
 
 				menu.AddSeparator( "" );
@@ -476,9 +503,16 @@ namespace InspectPlusNamespace
 			} );
 		}
 
-		private void OnScrollViewButtonRightClicked( GenericMenu menu, List<Object> list, int index )
+		private void OnFavoritesOrHistoryButtonRightClicked( GenericMenu menu, List<Object> list, int index )
 		{
-			menu.AddItem( new GUIContent( "Remove" ), false, () => RemoveObjectFromList( list, index ) );
+			menu.AddItem( new GUIContent( "Remove" ), false, () =>
+			{
+				if( objectBrowserWindow )
+					objectBrowserWindow.RemoveObjectFromList( list[index] );
+
+				RemoveObjectFromList( list, index );
+			} );
+
 			menu.AddSeparator( "" );
 
 			// Allow switching between components of a GameObject
@@ -499,6 +533,9 @@ namespace InspectPlusNamespace
 
 					menu.AddItem( new GUIContent( "Inspect/GameObject" ), false, () =>
 					{
+						if( objectBrowserWindow )
+							objectBrowserWindow.Close();
+
 						if( list == history )
 							list[index] = go;
 
@@ -512,6 +549,9 @@ namespace InspectPlusNamespace
 						{
 							menu.AddItem( new GUIContent( "Inspect/" + component.GetType().Name ), false, () =>
 							{
+								if( objectBrowserWindow )
+									objectBrowserWindow.Close();
+
 								if( list == history )
 									list[index] = component;
 
@@ -522,11 +562,40 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			menu.AddItem( new GUIContent( MenuItems.NEW_WINDOW_LABEL ), false, () => Inspect( list[index], true ) );
+			menu.AddItem( new GUIContent( MenuItems.NEW_WINDOW_LABEL ), false, () =>
+			{
+				if( objectBrowserWindow )
+					objectBrowserWindow.Close();
+
+				Inspect( list[index], true );
+			} );
+
 			menu.AddSeparator( "" );
 
 			if( list == history )
-				menu.AddItem( new GUIContent( "Add To Favorites" ), false, () => TryAddObjectToFavorites( list[index] ) );
+			{
+				List<Object> favoritesHolderList = null;
+				for( int i = 0; i < favoritesHolder.Count; i++ )
+				{
+					if( favoritesHolder[i].Contains( list[index] ) )
+					{
+						favoritesHolderList = favoritesHolder[i];
+						break;
+					}
+				}
+
+				if( favoritesHolderList == null )
+					menu.AddItem( new GUIContent( "Add To Favorites" ), false, () => TryAddObjectToFavorites( list[index] ) );
+				else
+				{
+					menu.AddItem( new GUIContent( "Remove From Favorites" ), false, () =>
+					{
+						int _index = favoritesHolderList.IndexOf( list[index] );
+						if( _index >= 0 )
+							RemoveObjectFromList( favoritesHolderList, _index );
+					} );
+				}
+			}
 
 			menu.AddItem( new GUIContent( "Open In Unity Inspector" ), false, () => Selection.activeObject = list[index] );
 			menu.AddItem( new GUIContent( "Ping" ), false, () => EditorGUIUtility.PingObject( list[index] ) );
@@ -569,6 +638,39 @@ namespace InspectPlusNamespace
 				GetNewWindow().InspectInternal( obj, true );
 			else if( mainWindow )
 			{
+				if( InspectPlusSettings.Instance.OpenNewTabsAsUnityTabs && editorWindowDockAreaField != null && dockAreaAddTabMethod != null )
+				{
+					// Create a new Inspect+ window and dock it next to the main Inspect+ window
+					object dockArea = editorWindowDockAreaField.GetValue( mainWindow );
+					if( dockArea != null && dockArea.GetType().FullName == "UnityEditor.DockArea" )
+					{
+						InspectPlusWindow newTab = CreateInstance<InspectPlusWindow>();
+						try
+						{
+							newTab.titleContent = windowTitle;
+							newTab.minSize = windowMinSize;
+
+#if UNITY_2018_3_OR_NEWER
+							dockAreaAddTabMethod.Invoke( dockArea, new object[2] { newTab, true } );
+#else
+							dockAreaAddTabMethod.Invoke( dockArea, new object[1] { newTab } );
+#endif
+
+							newTab.InspectInternal( obj, true );
+							newTab.ShowTab();
+
+							return;
+						}
+						catch( Exception e )
+						{
+							Debug.LogException( e );
+
+							if( newTab )
+								newTab.Close();
+						}
+					}
+				}
+
 				mainWindow.InspectInternal( obj, true );
 				mainWindow.shouldRepaint = true;
 			}
@@ -580,6 +682,17 @@ namespace InspectPlusNamespace
 		{
 			if( !obj )
 				return;
+
+			// If the inspected object is deleted but then this deletion is undo'ed after a domain reload, inspected object's
+			// reference will no longer point to the actual object until another domain reload happens. The reference's GetType
+			// will return UnityEngine.Object but interestingly, its instance ID will still be correct. Thus, we can convert
+			// that instance ID to Object to restore the reference without waiting for a domain reload
+			if( obj.GetType() == typeof( Object ) )
+			{
+				Object objectFromInstanceID = EditorUtility.InstanceIDToObject( obj.GetInstanceID() );
+				if( obj == objectFromInstanceID ) // This will return true although obj isn't pointing to the correct object (i.e. GetType() will return wrong type)
+					obj = objectFromInstanceID;
+			}
 
 			string assetPath = AssetDatabase.GetAssetPath( obj );
 
@@ -710,6 +823,9 @@ namespace InspectPlusNamespace
 				TryAddObjectToHistory( obj );
 				snapHistoryToActiveObject = true;
 			}
+
+			// Change tab's title to inspected object's name
+			titleContent = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) ) { text = obj.name };
 		}
 		#endregion
 
@@ -817,6 +933,12 @@ namespace InspectPlusNamespace
 				{
 					DestroyImmediate( projectWindowSelectionEditor );
 					projectWindowSelectionEditor = null;
+				}
+
+				if( projectWindowBoundInspector )
+				{
+					projectWindowBoundInspector.InspectInternal( selection[selection.Length - 1], true );
+					projectWindowBoundInspector.shouldRepaint = true;
 				}
 			}
 		}
@@ -1031,7 +1153,7 @@ namespace InspectPlusNamespace
 		{
 			Vector2 scrollPosition = drawingFavorites ? favoritesScrollPosition : historyScrollPosition;
 			List<List<Object>> lists = drawingFavorites ? favoritesHolder : historyHolder;
-			GUIContent icon = drawingFavorites ? ( !objectBrowserWindowVisible ? favoritesIcon : favoritesIconNoTooltip ) : ( !objectBrowserWindowVisible ? historyIcon : historyIconNoTooltip );
+			GUIContent icon = drawingFavorites ? ( !objectBrowserWindow ? favoritesIcon : favoritesIconNoTooltip ) : ( !objectBrowserWindow ? historyIcon : historyIconNoTooltip );
 
 			Event ev = Event.current;
 
@@ -1088,7 +1210,7 @@ namespace InspectPlusNamespace
 							case ButtonState.RightClicked:
 								GenericMenu menu = new GenericMenu();
 								int index = j;
-								OnScrollViewButtonRightClicked( menu, list, index );
+								OnFavoritesOrHistoryButtonRightClicked( menu, list, index );
 								menu.ShowAsContext();
 
 								break;
@@ -1257,9 +1379,10 @@ namespace InspectPlusNamespace
 			for( int i = 0; i < favoritesHolder.Count; i++ )
 				favoriteObjects.UnionWith( favoritesHolder[i] );
 
-			ObjectBrowserWindow window = CreateInstance<ObjectBrowserWindow>();
+			objectBrowserWindow = CreateInstance<ObjectBrowserWindow>();
 			ObjectBrowserWindow.SortType sortType = lists == favoritesHolder ? InspectPlusSettings.Instance.FavoritesSortType : InspectPlusSettings.Instance.HistorySortType;
-			window.Initialize( allObjects, favoriteObjects, mainObject, sortType, ( Object obj ) =>
+			objectBrowserWindow.Initialize( allObjects, favoriteObjects, mainObject, sortType,
+			( Object obj ) => // onObjectLeftClicked
 			{
 				pendingInspectTarget = obj;
 
@@ -1269,7 +1392,39 @@ namespace InspectPlusNamespace
 					snapHistoryToActiveObject = true;
 
 				return true;
-			}, ( Object obj, bool isFavorite ) =>
+			},
+			( Object obj ) => // onObjectRightClicked
+			{
+				for( int i = 0; i < lists.Count; i++ )
+				{
+					int index = lists[i].IndexOf( obj );
+					if( index >= 0 )
+					{
+						GenericMenu menu = new GenericMenu();
+						OnFavoritesOrHistoryButtonRightClicked( menu, lists[i], index );
+						menu.ShowAsContext();
+
+						break;
+					}
+				}
+
+				return true;
+			},
+			( Object obj ) => // onObjectRemoved
+			{
+				for( int i = 0; i < lists.Count; i++ )
+				{
+					int index = lists[i].IndexOf( obj );
+					if( index >= 0 )
+					{
+						RemoveObjectFromList( lists[i], index );
+						break;
+					}
+				}
+
+				return true;
+			},
+			( Object obj, bool isFavorite ) => // onObjectFavoriteStateChanged
 			{
 				if( isFavorite )
 					TryAddObjectToFavorites( obj );
@@ -1286,9 +1441,9 @@ namespace InspectPlusNamespace
 					}
 				}
 			},
-			( ObjectBrowserWindow.SortType sortType2 ) =>
+			( ObjectBrowserWindow.SortType sortType2 ) => // onWindowClosed
 			{
-				objectBrowserWindowVisible = false;
+				objectBrowserWindow = null;
 				objectBrowserWindowCloseTime = EditorApplication.timeSinceStartup;
 
 				if( lists == favoritesHolder && sortType2 != InspectPlusSettings.Instance.FavoritesSortType )
@@ -1312,8 +1467,7 @@ namespace InspectPlusNamespace
 			if( !InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
 				scrollableListIconRect.height -= 2f;
 
-			window.ShowAsDropDown( scrollableListIconRect, new Vector2( windowWidth, Mathf.Min( Screen.currentResolution.height * 0.5f, allObjects.Count * ( EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing ) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing + 5f ) ) );
-			objectBrowserWindowVisible = true;
+			objectBrowserWindow.ShowAsDropDown( scrollableListIconRect, new Vector2( windowWidth, Mathf.Min( Screen.currentResolution.height * 0.5f, allObjects.Count * ( EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing ) + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing + 5f ) ) );
 		}
 
 		// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/Inspector/InspectorWindow.cs
@@ -1527,32 +1681,18 @@ namespace InspectPlusNamespace
 				EditorUtility.SetDirty( InspectPlusSettings.Instance );
 			}
 
+			if( objectBrowserWindow )
+				objectBrowserWindow.favoriteObjects.Add( obj );
+
 			return true;
 		}
 
 		private void RemoveObjectFromList( List<Object> list, int index )
 		{
+			Object obj = list[index];
 			list.RemoveAt( index );
 
-			if( list == history )
-			{
-				// If currently inspected object was opened in multiple tabs, do nothing
-				for( int i = 0; i < list.Count; i++ )
-				{
-					if( list[i] == mainObject )
-						return;
-				}
-
-				// Inspect the previous tab
-				if( list.Count > 0 )
-				{
-					if( index >= list.Count )
-						index = list.Count - 1;
-
-					InspectInternal( list[index], false );
-				}
-			}
-			else
+			if( list != history )
 			{
 				bool isSceneFavoriteList = false;
 				for( int i = 0; i < SceneFavoritesHolder.Instances.Count; i++ )
@@ -1568,6 +1708,9 @@ namespace InspectPlusNamespace
 
 				if( !isSceneFavoriteList )
 					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+
+				if( objectBrowserWindow )
+					objectBrowserWindow.favoriteObjects.Remove( obj );
 			}
 		}
 
@@ -1619,6 +1762,29 @@ namespace InspectPlusNamespace
 				debugModeDrawers.Add( new DebugModeEntry( null ) { Getter = variableGetter } );
 				debugModeDrawerCount++;
 			}
+		}
+
+		private void CleanUpDrawers()
+		{
+			for( int i = 0; i < inspectorDrawers.Count; i++ )
+			{
+				try
+				{
+					// In rare circumstances, this can throw various exceptions. These exceptions shouldn't halt the execution
+					if( inspectorDrawers[i] )
+						DestroyImmediate( inspectorDrawers[i] );
+				}
+				catch { }
+			}
+
+			inspectorDrawers.Clear();
+			inspectorDrawerCount = 0;
+			debugModeDrawerCount = 0;
+
+			if( projectWindowSelectionEditor )
+				DestroyImmediate( projectWindowSelectionEditor );
+
+			projectWindowSelectionEditor = null;
 		}
 
 #if UNITY_2017_1_OR_NEWER

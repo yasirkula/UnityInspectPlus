@@ -404,7 +404,7 @@ namespace InspectPlusNamespace
 
 		protected override bool CanStartDrag( CanStartDragArgs args )
 		{
-			return HasSelection();
+			return true;
 		}
 
 		protected override void SetupDragAndDrop( SetupDragAndDropArgs args )

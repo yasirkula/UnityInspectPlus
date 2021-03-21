@@ -59,12 +59,15 @@ namespace InspectPlusNamespace
 
 		public enum SortType { None = 0, Name = 1, Type = 2 };
 
-		private static readonly Color activeButtonColor = new Color32( 245, 170, 10, 255 );
+		private static readonly Color activeButtonColorLightSkin = new Color32( 245, 170, 10, 255 );
+		private static readonly Color activeButtonColorDarkSkin = new Color32( 100, 65, 0, 255 );
+		private static readonly Color nonFavoriteObjectIconColor = new Color32( 32, 32, 32, 255 );
+
 		private GUIStyle buttonStyle;
 
 		private List<Object> objects;
-		private HashSet<Object> favoriteObjects;
 		private Object mainObject;
+		internal HashSet<Object> favoriteObjects;
 
 		private SortType sortType;
 
@@ -72,7 +75,9 @@ namespace InspectPlusNamespace
 		private Vector2 scrollPosition;
 
 		public delegate bool ObjectClickedDelegate( Object obj );
-		private ObjectClickedDelegate onObjectClicked;
+		private ObjectClickedDelegate onObjectLeftClicked;
+		private ObjectClickedDelegate onObjectRightClicked;
+		private ObjectClickedDelegate onObjectRemoved;
 
 		public delegate void FavoriteStateChangedDelegate( Object obj, bool isFavorite );
 		private FavoriteStateChangedDelegate onObjectFavoriteStateChanged;
@@ -80,13 +85,15 @@ namespace InspectPlusNamespace
 		public delegate void WindowClosedDelegate( SortType sortType );
 		private WindowClosedDelegate onWindowClosed;
 
-		public void Initialize( List<Object> objects, HashSet<Object> favoriteObjects, Object mainObject, SortType sortType, ObjectClickedDelegate onObjectClicked, FavoriteStateChangedDelegate onObjectFavoriteStateChanged, WindowClosedDelegate onWindowClosed )
+		public void Initialize( List<Object> objects, HashSet<Object> favoriteObjects, Object mainObject, SortType sortType, ObjectClickedDelegate onObjectLeftClicked, ObjectClickedDelegate onObjectRightClicked, ObjectClickedDelegate onObjectRemoved, FavoriteStateChangedDelegate onObjectFavoriteStateChanged, WindowClosedDelegate onWindowClosed )
 		{
 			this.objects = objects;
 			this.favoriteObjects = favoriteObjects;
 			this.mainObject = mainObject;
 			this.sortType = sortType;
-			this.onObjectClicked = onObjectClicked;
+			this.onObjectLeftClicked = onObjectLeftClicked;
+			this.onObjectRightClicked = onObjectRightClicked;
+			this.onObjectRemoved = onObjectRemoved;
 			this.onObjectFavoriteStateChanged = onObjectFavoriteStateChanged;
 			this.onWindowClosed = onWindowClosed;
 
@@ -111,7 +118,9 @@ namespace InspectPlusNamespace
 				buttonStyle = null;
 				addToFavoritesIcon = null;
 				removeFromFavoritesIcon = null;
-				onObjectClicked = null;
+				onObjectLeftClicked = null;
+				onObjectRightClicked = null;
+				onObjectRemoved = null;
 				onObjectFavoriteStateChanged = null;
 				onWindowClosed = null;
 			}
@@ -153,14 +162,14 @@ namespace InspectPlusNamespace
 					backgroundRect.y -= EditorGUIUtility.standardVerticalSpacing * 0.5f;
 					backgroundRect.height += EditorGUIUtility.standardVerticalSpacing;
 
-					EditorGUI.DrawRect( backgroundRect, activeButtonColor );
+					EditorGUI.DrawRect( backgroundRect, EditorGUIUtility.isProSkin ? activeButtonColorDarkSkin : activeButtonColorLightSkin );
 				}
 
 				bool isObjectFavorite = favoriteObjects.Contains( objects[i] );
 				if( isObjectFavorite )
 					GUI.contentColor = Color.white;
 				else
-					GUI.contentColor = Color.grey;
+					GUI.contentColor = nonFavoriteObjectIconColor;
 
 				if( GUI.Button( favoritesIconRect, isObjectFavorite ? removeFromFavoritesIcon : addToFavoritesIcon, buttonStyle ) )
 				{
@@ -177,10 +186,26 @@ namespace InspectPlusNamespace
 
 				if( GUI.Button( buttonRect, EditorGUIUtility.ObjectContent( objects[i], objects[i].GetType() ), buttonStyle ) )
 				{
-					if( onObjectClicked != null && onObjectClicked( objects[i] ) )
+					if( Event.current.button == 0 )
 					{
-						Close();
-						GUIUtility.ExitGUI();
+						if( onObjectLeftClicked == null || onObjectLeftClicked( objects[i] ) )
+						{
+							Close();
+							GUIUtility.ExitGUI();
+						}
+					}
+					else if( Event.current.button == 1 )
+					{
+						if( onObjectRightClicked != null )
+							onObjectRightClicked( objects[i] );
+					}
+					else if( Event.current.button == 2 )
+					{
+						if( onObjectRemoved != null && onObjectRemoved( objects[i] ) )
+						{
+							RemoveObjectFromList( objects[i] );
+							GUIUtility.ExitGUI();
+						}
 					}
 				}
 
@@ -206,6 +231,22 @@ namespace InspectPlusNamespace
 				SortObjects();
 
 			EditorGUIUtility.labelWidth = originalLabelWidth;
+		}
+
+		public void RemoveObjectFromList( Object obj )
+		{
+			if( obj != null && objects != null && objects.Remove( obj ) )
+			{
+				if( objects.Count == 0 )
+					Close();
+				else
+				{
+					Vector2 size = position.size;
+					size.y -= EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+					minSize = size;
+					maxSize = size;
+				}
+			}
 		}
 
 		private void SortObjects()

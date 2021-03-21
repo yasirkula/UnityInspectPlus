@@ -40,12 +40,16 @@ namespace InspectPlusNamespace
 
 		[Space]
 		[Tooltip( "Determines whether Favorites and History lists should be drawn horizontally or vertically" )]
-		public bool CompactFavoritesAndHistoryLists = false;
+		public bool CompactFavoritesAndHistoryLists = true;
 
 		[Tooltip( "New windows should show Favorites list by default (if Favorites is not empty)" )]
 		public bool ShowFavoritesByDefault = true;
 		[Tooltip( "New windows should show History list by default (if History is not empty)" )]
 		public bool ShowHistoryByDefault = true;
+
+		[Space]
+		[Tooltip( "If enabled, a new Unity tab will be created for objects when 'Open In New Tab' is clicked. Otherwise, these objects will be added to the active Inspect+ window's history list" )]
+		public bool OpenNewTabsAsUnityTabs = false;
 
 		[Space]
 		[Tooltip( "Height of the Favorites list" )]
