@@ -211,7 +211,7 @@ namespace InspectPlusNamespace
 		{
 			if( !command.context )
 			{
-				Debug.LogError( "Encountered empty context, probably a missing script." );
+				//Debug.LogError( "Encountered empty context, probably a missing script." );
 				return false;
 			}
 

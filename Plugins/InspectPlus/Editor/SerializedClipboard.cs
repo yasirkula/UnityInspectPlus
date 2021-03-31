@@ -454,7 +454,7 @@ namespace InspectPlusNamespace
 
 				if( !context )
 				{
-					Debug.LogError( "Empty context encountered while deserializing managed object, please report it to Inspect+'s author." );
+					Debug.LogWarning( "Empty context encountered while deserializing managed object." );
 					return null;
 				}
 
