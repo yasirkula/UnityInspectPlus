@@ -78,6 +78,35 @@ namespace InspectPlusNamespace
 			this.getter = getter;
 		}
 
+		public VariableGetterHolder( MethodInfo methodInfo, VariableGetVal getter )
+		{
+			Type type = methodInfo.ReturnType;
+
+			StringBuilder sb = Utilities.stringBuilder;
+			sb.Length = 0;
+			sb.Append( "(M" );
+
+			if( methodInfo.IsPublic )
+				sb.Append( "+)" );
+			else if( methodInfo.IsFamily || methodInfo.IsAssembly )
+				sb.Append( "#)" );
+			else
+				sb.Append( "-)" );
+
+			if( methodInfo.IsStatic )
+				sb.Append( "(S)" );
+			if( Attribute.IsDefined( methodInfo, typeof( ObsoleteAttribute ) ) )
+				sb.Append( "(O)" );
+
+			sb.Append( "(" );
+			AppendTypeToDescription( sb, type );
+			sb.Append( ") " );
+			sb.Append( methodInfo.Name );
+
+			this.description = sb.ToString();
+			this.getter = getter;
+		}
+
 		private static void AppendTypeToDescription( StringBuilder sb, Type type )
 		{
 			string name = type.Name;

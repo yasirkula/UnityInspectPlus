@@ -156,6 +156,48 @@ namespace InspectPlusNamespace
 				currType = currType.BaseType;
 			}
 
+			currType = type;
+			while( currType != typeof( object ) )
+			{
+				MethodInfo[] methods = currType.GetMethods( VARIABLE_BINDING_FLAGS );
+				for( int i = 0; i < methods.Length; i++ )
+				{
+					MethodInfo method = methods[i];
+
+					// Skip operator overloads or property accessors
+					if( method.IsSpecialName )
+						continue;
+
+					// Skip functions that take parameters or generic arguments (i.e. "GetComponent<Type>()")
+					if( method.GetParameters().Length > 0 || method.GetGenericArguments().Length > 0 )
+						continue;
+
+					Type returnType = method.ReturnType;
+
+					// Skip functions that don't return anything
+					if( returnType == typeof( void ) )
+						continue;
+
+					// Assembly variables can throw InvalidCastException on .NET 4.0 runtime
+					if( typeof( Type ).IsAssignableFrom( returnType ) || returnType.Namespace == reflectionNameSpace )
+						continue;
+
+					// Pointers and ref variables can throw ArgumentException
+					if( returnType.IsPointer || returnType.IsByRef )
+						continue;
+
+					// No need to check methods with 'override' keyword
+					if( method.GetBaseDefinition().DeclaringType != method.DeclaringType )
+						continue;
+
+					VariableGetVal getter = method.CreateGetter();
+					if( getter != null )
+						validVariables.Add( new VariableGetterHolder( method, getter ) );
+				}
+
+				currType = currType.BaseType;
+			}
+
 			result = validVariables.ToArray();
 
 			// Cache the filtered variables
@@ -193,6 +235,25 @@ namespace InspectPlusNamespace
 			{
 				Type GenType = typeof( PropertyWrapper<> ).MakeGenericType( propertyInfo.PropertyType );
 				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, getMethod ) ).GetValue;
+			}
+		}
+
+		// Get <get> function for a method
+		public static VariableGetVal CreateGetter( this MethodInfo methodInfo )
+		{
+			// Can't use PropertyWrapper (which uses CreateDelegate) for methods of structs
+			if( methodInfo.DeclaringType.IsValueType )
+				return ( obj ) => methodInfo.Invoke( obj, null );
+
+			if( !methodInfo.IsStatic )
+			{
+				Type GenType = typeof( PropertyWrapper<,> ).MakeGenericType( methodInfo.DeclaringType, methodInfo.ReturnType );
+				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, methodInfo ) ).GetValue;
+			}
+			else
+			{
+				Type GenType = typeof( PropertyWrapper<> ).MakeGenericType( methodInfo.ReturnType );
+				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, methodInfo ) ).GetValue;
 			}
 		}
 
