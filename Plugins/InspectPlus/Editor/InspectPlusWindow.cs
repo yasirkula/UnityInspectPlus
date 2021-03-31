@@ -842,8 +842,35 @@ namespace InspectPlusNamespace
 				snapHistoryToActiveObject = true;
 			}
 
-			// Change tab's title to inspected object's name
-			titleContent = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) ) { text = obj.name };
+			// Change tab's title to inspected object's name (title's tooltip should display object's path)
+			string titleTooltip;
+			if( !string.IsNullOrEmpty( assetPath ) )
+				titleTooltip = assetPath;
+			else
+			{
+				titleTooltip = obj.name;
+
+				Transform objTR = null;
+				if( obj is GameObject )
+					objTR = ( (GameObject) obj ).transform;
+				else if( obj is Component )
+					objTR = ( (Component) obj ).transform;
+
+				if( objTR )
+				{
+					while( objTR.parent )
+					{
+						objTR = objTR.parent;
+						titleTooltip = string.Concat( objTR.name, "/", titleTooltip );
+					};
+				}
+			}
+
+			titleContent = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) )
+			{
+				text = obj.name,
+				tooltip = string.Concat( titleTooltip, " (", obj.GetType().Name, ")" )
+			};
 		}
 		#endregion
 
