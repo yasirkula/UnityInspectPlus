@@ -28,7 +28,7 @@ namespace InspectPlusNamespace
 						AssetDatabase.SaveAssets();
 						m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( INITIAL_SAVE_PATH );
 
-						Debug.Log( "Created Inspect+ settings file at " + INITIAL_SAVE_PATH + ". You can move this file around freely." );
+						Debug.Log( "Created Inspect+ settings file at " + INITIAL_SAVE_PATH + ". You can move this file around freely.", m_instance );
 					}
 				}
 

@@ -843,6 +843,7 @@ namespace InspectPlusNamespace
 			}
 
 			// Change tab's title to inspected object's name (title's tooltip should display object's path)
+#if UNITY_2019_3_OR_NEWER
 			string titleTooltip;
 			if( !string.IsNullOrEmpty( assetPath ) )
 				titleTooltip = assetPath;
@@ -865,11 +866,14 @@ namespace InspectPlusNamespace
 					};
 				}
 			}
+#endif
 
 			titleContent = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) )
 			{
 				text = obj.name,
+#if UNITY_2019_3_OR_NEWER
 				tooltip = string.Concat( titleTooltip, " (", obj.GetType().Name, ")" )
+#endif
 			};
 		}
 		#endregion
