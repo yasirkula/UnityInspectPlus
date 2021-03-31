@@ -413,6 +413,16 @@ namespace InspectPlusNamespace
 				menu.AddItem( new GUIContent( "Show History" ), showHistory, () => showHistory = !showHistory );
 				menu.AddSeparator( "" );
 			}
+			else
+			{
+				menu.AddItem( new GUIContent( "Show Favorites and History" ), showFavorites || showHistory, () =>
+				{
+					bool toggledValue = !showFavorites && !showHistory;
+					showFavorites = showHistory = toggledValue;
+				} );
+
+				menu.AddSeparator( "" );
+			}
 
 			menu.AddItem( new GUIContent( "Debug Mode" ), debugMode, () => debugMode = !debugMode );
 			menu.AddSeparator( "" );
@@ -954,10 +964,13 @@ namespace InspectPlusNamespace
 			Event ev = Event.current;
 			if( InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
 			{
-				GUILayout.BeginHorizontal();
-				DrawScrollableList( true );
-				DrawScrollableList( false );
-				GUILayout.EndHorizontal();
+				if( showFavorites || showHistory )
+				{
+					GUILayout.BeginHorizontal();
+					DrawScrollableList( true );
+					DrawScrollableList( false );
+					GUILayout.EndHorizontal();
+				}
 			}
 			else
 			{
