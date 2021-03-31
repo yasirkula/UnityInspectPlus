@@ -491,6 +491,14 @@ namespace InspectPlusNamespace
 
 			menu.AddSeparator( "" );
 
+			menu.AddItem( new GUIContent( "Ping" ), false, () =>
+			{
+				if( mainObject )
+					EditorGUIUtility.PingObject( mainObject );
+			} );
+
+			menu.AddSeparator( "" );
+
 			menu.AddItem( new GUIContent( "Paste Bin" ), false, ShowPasteBinWindow );
 
 			menu.AddItem( new GUIContent( "Settings" ), false, () => Selection.activeObject = InspectPlusSettings.Instance );
