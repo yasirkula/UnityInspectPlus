@@ -49,7 +49,7 @@ namespace InspectPlusNamespace
 
 		[Space]
 		[Tooltip( "If enabled, a new Unity tab will be created for objects when 'Open In New Tab' is clicked. Otherwise, these objects will be added to the active Inspect+ window's history list" )]
-		public bool OpenNewTabsAsUnityTabs = false;
+		public bool OpenNewTabsAsUnityTabs = true;
 
 		[Space]
 		[Tooltip( "Height of the Favorites list" )]
