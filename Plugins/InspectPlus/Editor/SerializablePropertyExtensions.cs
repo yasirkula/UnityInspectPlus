@@ -84,6 +84,17 @@ namespace InspectPlusNamespace
 				this.c6 = c6;
 			}
 
+			public override bool Equals( object obj )
+			{
+				VectorClipboard other = obj as VectorClipboard;
+				return other != null && other.c1 == c1 && other.c2 == c2 && other.c3 == c3 && other.c4 == c4 && other.c5 == c5 && other.c6 == c6;
+			}
+
+			public override int GetHashCode()
+			{
+				return base.GetHashCode();
+			}
+
 			public static implicit operator VectorClipboard( Vector2 v ) { return new VectorClipboard( v.x, v.y ); }
 			public static implicit operator VectorClipboard( Vector3 v ) { return new VectorClipboard( v.x, v.y, v.z ); }
 			public static implicit operator VectorClipboard( Vector4 v ) { return new VectorClipboard( v.x, v.y, v.z, v.w ); }
@@ -152,6 +163,16 @@ namespace InspectPlusNamespace
 				this.value = value;
 				this.nestedManagedObjects = nestedManagedObjects;
 				this.nestedUnityObjects = nestedUnityObjects;
+			}
+
+			public override bool Equals( object obj )
+			{
+				return obj is ManagedObjectClipboard && ( (ManagedObjectClipboard) obj ).value == value;
+			}
+
+			public override int GetHashCode()
+			{
+				return base.GetHashCode();
 			}
 		}
 		#endregion
@@ -741,7 +762,7 @@ namespace InspectPlusNamespace
 			return false;
 		}
 
-		#region Serialized Property Enumerators
+		#region SerializedProperty Enumerators
 		public static IEnumerable<SerializedProperty> EnumerateDirectChildren( this SerializedObject serializedObject )
 		{
 			return EnumerateDirectChildrenInternal( serializedObject.GetIterator(), true );

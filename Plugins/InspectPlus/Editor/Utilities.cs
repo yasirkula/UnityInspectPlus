@@ -10,7 +10,7 @@ using Object = UnityEngine.Object;
 
 namespace InspectPlusNamespace
 {
-	public static class Utilities
+	internal static class Utilities
 	{
 		private const BindingFlags VARIABLE_BINDING_FLAGS = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
@@ -213,13 +213,13 @@ namespace InspectPlusNamespace
 		}
 
 		// Get <get> function for a field
-		public static VariableGetVal CreateGetter( this FieldInfo fieldInfo )
+		private static VariableGetVal CreateGetter( this FieldInfo fieldInfo )
 		{
 			return fieldInfo.GetValue;
 		}
 
 		// Get <get> function for a property
-		public static VariableGetVal CreateGetter( this PropertyInfo propertyInfo )
+		private static VariableGetVal CreateGetter( this PropertyInfo propertyInfo )
 		{
 			// Can't use PropertyWrapper (which uses CreateDelegate) for property getters of structs
 			if( propertyInfo.DeclaringType.IsValueType )
@@ -239,7 +239,7 @@ namespace InspectPlusNamespace
 		}
 
 		// Get <get> function for a method
-		public static VariableGetVal CreateGetter( this MethodInfo methodInfo )
+		private static VariableGetVal CreateGetter( this MethodInfo methodInfo )
 		{
 			// Can't use PropertyWrapper (which uses CreateDelegate) for methods of structs
 			if( methodInfo.DeclaringType.IsValueType )
@@ -258,7 +258,7 @@ namespace InspectPlusNamespace
 		}
 
 		// Restricts the given Rect within the screen's bounds
-		internal static Rect GetScreenFittedRect( Rect originalRect )
+		public static Rect GetScreenFittedRect( Rect originalRect )
 		{
 			if( screenFittedRectGetter == null )
 				screenFittedRectGetter = typeof( EditorWindow ).Assembly.GetType( "UnityEditor.ContainerWindow" ).GetMethod( "FitRectToScreen", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
@@ -267,7 +267,7 @@ namespace InspectPlusNamespace
 		}
 
 		// Converts full paths to relative paths so that they can be used with AssetDatabase
-		internal static void ConvertAbsolutePathsToRelativePaths( string[] absolutePaths )
+		public static void ConvertAbsolutePathsToRelativePaths( string[] absolutePaths )
 		{
 			string projectPath = Path.GetFullPath( Directory.GetCurrentDirectory() );
 			string projectPath2 = projectPath.Replace( '\\', '/' );

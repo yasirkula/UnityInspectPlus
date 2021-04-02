@@ -158,6 +158,12 @@ namespace InspectPlusNamespace
 			PasteBinWindow.Show();
 		}
 
+		[MenuItem( "Window/Inspect+/Diff Window" )]
+		private static void ShowObjectDiffWindow()
+		{
+			ObjectDiffWindow.Show();
+		}
+
 		[MenuItem( "Window/Inspect+/Settings" )]
 		private static void ShowSettings()
 		{
