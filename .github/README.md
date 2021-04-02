@@ -1,6 +1,8 @@
 # Unity Inspect+ Plugin
 
-![screenshot](Images/screenshot.png) ![screenshot2](Images/DiffTool.png)
+<p align="center">
+<img height="400" src="Images/screenshot.png" alt="screenshot" /> <img height="400" src="Images/DiffTool.png" alt="screenshot2" />
+</p>
 
 This plugin helps you view an object's Inspector in a separate tab/window, copy&paste the values of variables in the Inspector and inspect all variables of an object (including non-serializable and static variables) in an enhanced Debug mode.
 
