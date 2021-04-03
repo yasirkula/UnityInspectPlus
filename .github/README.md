@@ -31,5 +31,5 @@ There are 4 ways to install this plugin:
 - You can right click variables in the Inspector to copy&paste their values (variables that are not drawn with *SerializedProperty* don't support this feature)
 - You can right click the Inspect+ tab to enable **Debug mode**: you can inspect all variables of an object in this mode, including static, readonly and non-serializable variables
 - You can open Paste Bin via **Window/Inspect+/Paste Bin**: this window lists the copied variables and is shared between all Unity projects (so, copying a value in Project A will make that value available in Project B). You can also right click variables/Components/Materials in the Inspector and select **Paste Values From Bin** to quickly pick a value from Paste Bin
-- You can open Object Diff Window via **Window/Inspect+/Diff Window**: this window lets you see the differences between two objects in your project (diff of two GameObjects won't include the components, you must diff the desired components instead)
+- You can open Object Diff Window via **Window/Inspect+/Diff Window**: this window lets you see the differences between two objects in your project (diff of two GameObjects won't include their child GameObjects)
 - You can show the Inspect+ window from your editor scripts by calling the `InspectPlusNamespace.InspectPlusWindow.Inspect` functions

@@ -10,12 +10,16 @@ namespace InspectPlusNamespace
 	{
 		private enum DiffType { Same, Different, Obj1Extra, Obj2Extra, DifferentChildren };
 
+		#region Helper Classes
 		// Diffs are stored in a tree consisting of DiffNodes. Each DiffNode contains SerializedProperties with the same propertyPath from compared objects,
 		// or a single SerializedProperty if that SerializedProperty's propertyPath doesn't exist on the other object
 		private class DiffNode
 		{
+			[NonSerialized] // We don't need these to be serialized while serializing RootDiffNode
 			public DiffType type;
+			[NonSerialized]
 			public DiffNode[] children;
+			[NonSerialized]
 			public SerializedProperty prop1, prop2;
 
 			public DiffNode( DiffType type, SerializedProperty prop1, SerializedProperty prop2 )
@@ -40,33 +44,81 @@ namespace InspectPlusNamespace
 			}
 		}
 
+		[Serializable]
+		private class RootDiffNode : DiffNode
+		{
+			// Although we can fetch these from SerializedObject.targetObject, SerializedObject doesn't persist between
+			// assembly reloads but UnityEngine.Object does and we need these diffed objects to persist
+			public Object diffObject1, diffObject2;
+			public bool hasAnyDiffs;
+
+			[NonSerialized] // Just in case...
+			public SerializedObject serializedObject1, serializedObject2;
+
+			public RootDiffNode( SerializedObject serializedObject1, SerializedObject serializedObject2, DiffNode[] children ) : base( DiffType.DifferentChildren, null, null )
+			{
+				this.serializedObject1 = serializedObject1;
+				this.serializedObject2 = serializedObject2;
+				this.diffObject1 = serializedObject1.targetObject;
+				this.diffObject2 = serializedObject2.targetObject;
+				this.children = children;
+
+				hasAnyDiffs = false;
+				for( int i = 0; i < children.Length; i++ )
+				{
+					if( children[i].type != DiffType.Same )
+					{
+						hasAnyDiffs = true;
+						break;
+					}
+				}
+			}
+		}
+
+		[Serializable]
+		private struct DiffExtraComponent
+		{
+			public Component component;
+			[NonSerialized] // No need to serialize
+			public GameObject missingGameObject;
+			[NonSerialized] // No need to serialize
+			public bool isComponentInDiffObject1;
+		}
+		#endregion
+
 		private const float DIFF_RESULTS_EDGE_PADDING = 5f;
+		private const float HEADER_PADDING = 6f;
 		private const float COPY_VALUE_BUTTON_PADDING = 3f;
 		private const float COPY_VALUE_BUTTON_WIDTH = 20f;
 
 		private readonly Color COLUMN1_COLOR = new Color32( 0, 0, 0, 0 );
 		private readonly Color COLUMN2_COLOR = new Color32( 128, 128, 128, 25 );
+		private readonly Color DIFF_HEADER_COLOR = new Color32( 0, 100, 255, 100 );
 		private readonly Color DIFFERENT_PROPERTY_COLOR_LIGHT_SKIN = new Color32( 255, 255, 0, 100 );
 		private readonly Color DIFFERENT_PROPERTY_COLOR_DARK_SKIN = new Color32( 255, 255, 0, 40 );
 		private readonly Color MISSING_PROPERTY_COLOR = new Color32( 255, 0, 0, 100 );
 
 		private readonly GUIContent COPY_TO_OBJ1_BUTTON = new GUIContent( "<", "Copy the value from right to left" );
 		private readonly GUIContent COPY_TO_OBJ2_BUTTON = new GUIContent( ">", "Copy the value from left to right" );
+		private readonly GUIContent COPY_COMPONENT_TO_LEFT_BUTTON = new GUIContent( "<", "Copy the component" );
+		private readonly GUIContent COPY_COMPONENT_TO_RIGHT_BUTTON = new GUIContent( ">", "Copy the component" );
+		private readonly GUIContent DESTROY_COMPONENT_BUTTON = new GUIContent( "X", "Destroy (remove) the component" );
 
 #pragma warning disable 0649
-		[SerializeField] // Needed to access these properties via SerializedObject
+		[SerializeField] // SerializeField is needed to access these properties via windowSerialized
 		private Object obj1, obj2;
-		[SerializeField] // Preserve diffed objects between Unity sessions
-		private Object diffedObj1, diffedObj2;
-		private SerializedObject diffedSO1, diffedSO2;
+		[SerializeField]
+		private RootDiffNode[] rootDiffNodes;
+		[SerializeField]
+		private DiffExtraComponent[] diffExtraComponents;
 
 		[SerializeField]
 		private bool showSameValues = true;
 #pragma warning restore 0649
 
-		private DiffNode rootDiffNode;
-
 		private SerializedObject windowSerialized;
+
+		private GUIStyle centerAlignedText;
 
 		private Rect scrollViewRect = new Rect();
 		private Vector2 scrollViewRange;
@@ -98,8 +150,8 @@ namespace InspectPlusNamespace
 
 		private void RefreshDiff()
 		{
-			if( diffedObj1 && diffedObj2 )
-				CalculateDiff( diffedObj1, diffedObj2, false );
+			if( rootDiffNodes != null && rootDiffNodes.Length > 0 && rootDiffNodes[0].diffObject1 && rootDiffNodes[0].diffObject2 )
+				CalculateDiff( rootDiffNodes[0].diffObject1, rootDiffNodes[0].diffObject2, false );
 
 			Repaint();
 		}
@@ -135,12 +187,15 @@ namespace InspectPlusNamespace
 			}
 			GUI.enabled = true;
 
-			if( diffedSO1 != null && diffedSO2 != null )
+			if( rootDiffNodes != null && rootDiffNodes.Length > 0 && rootDiffNodes[0].serializedObject1 != null )
 			{
-				if( diffedSO1.targetObject )
-					diffedSO1.Update();
-				if( diffedSO2.targetObject )
-					diffedSO2.Update();
+				for( int i = 0; i < rootDiffNodes.Length; i++ )
+				{
+					if( rootDiffNodes[i].serializedObject1.targetObject )
+						rootDiffNodes[i].serializedObject1.Update();
+					if( rootDiffNodes[i].serializedObject2.targetObject )
+						rootDiffNodes[i].serializedObject2.Update();
+				}
 
 				scrollViewRect.height += 10f;
 				EditorGUI.HelpBox( GetRect( EditorGUIUtility.singleLineHeight * 2f, 2f ), "Diff results are NOT refreshed automatically.", MessageType.Info );
@@ -149,22 +204,89 @@ namespace InspectPlusNamespace
 				EditorGUI.DrawRect( new Rect( scrollViewRect.x, scrollViewRect.yMax, scrollViewRect.width * 0.5f, 10000f ), COLUMN1_COLOR );
 				EditorGUI.DrawRect( new Rect( scrollViewRect.x + scrollViewRect.width * 0.5f, scrollViewRect.yMax, scrollViewRect.width * 0.5f, 10000f ), COLUMN2_COLOR );
 
-				// Draw diffedObj1 and diffedObj2 because user might change obj1 and obj2 after calculating the diff (these properties also support Copy/Paste context menu)
-				rect = GetRect( EditorGUIUtility.singleLineHeight, 3f );
-
-				EditorGUI.PropertyField( new Rect( rect.x, rect.y, rect.width * 0.5f, rect.height ), windowSerialized.FindProperty( "diffedObj1" ), GUIContent.none, false );
-				EditorGUI.PropertyField( new Rect( rect.x + rect.width * 0.5f, rect.y, rect.width * 0.5f, rect.height ), windowSerialized.FindProperty( "diffedObj2" ), GUIContent.none, false );
-
 				showSameValues = GUI.Toggle( GetRect( EditorGUIUtility.singleLineHeight * 1.5f, 3f ), showSameValues, showSameValues ? "Show Same Values: ON" : "Show Same Values: OFF", GUI.skin.button );
 
 				// Draw diff results
-				DrawDiffNode( rootDiffNode );
+				for( int i = 0; i < rootDiffNodes.Length; i++ )
+				{
+					// Draw diffed objects (these properties are drawn with PropertyField to support Copy/Paste context menu)
+					rect = GetRect( EditorGUIUtility.singleLineHeight + HEADER_PADDING );
+
+					// Paint the diffed objects' background
+					EditorGUI.DrawRect( new Rect( rect.x - DIFF_RESULTS_EDGE_PADDING, rect.y, rect.width + 2f * DIFF_RESULTS_EDGE_PADDING, rect.height ), DIFF_HEADER_COLOR );
+
+					// Apply padding from top and bottom
+					rect.y += HEADER_PADDING * 0.5f;
+					rect.height -= HEADER_PADDING;
+
+					EditorGUI.PropertyField( new Rect( rect.x, rect.y, rect.width * 0.5f, rect.height ), windowSerialized.FindProperty( "rootDiffNodes" ).GetArrayElementAtIndex( i ).FindPropertyRelative( "diffObject1" ), GUIContent.none, false );
+					EditorGUI.PropertyField( new Rect( rect.x + rect.width * 0.5f, rect.y, rect.width * 0.5f, rect.height ), windowSerialized.FindProperty( "rootDiffNodes" ).GetArrayElementAtIndex( i ).FindPropertyRelative( "diffObject2" ), GUIContent.none, false );
+
+					// Draw diffed objects' diffs
+					if( showSameValues || rootDiffNodes[i].hasAnyDiffs )
+						DrawDiffNode( rootDiffNodes[i] );
+					else
+					{
+						if( centerAlignedText == null )
+							centerAlignedText = new GUIStyle( GUI.skin.label ) { alignment = TextAnchor.MiddleCenter };
+
+						EditorGUI.LabelField( GetRect( EditorGUIUtility.singleLineHeight ), "No differences...", centerAlignedText );
+					}
+
+					// Draw separator line
+					if( i < rootDiffNodes.Length - 1 )
+					{
+						scrollViewRect.height += 10f;
+
+						GUI.Box( GetRect( 1f ), GUIContent.none );
+
+						scrollViewRect.height += 10f;
+					}
+				}
+
+				// Draw extra components that don't exist on both of the diffed GameObjects
+				if( diffExtraComponents != null && diffExtraComponents.Length > 0 )
+				{
+					scrollViewRect.height += 20f;
+
+					GUI.Box( GetRect( EditorGUIUtility.singleLineHeight * 1.25f, 2f ), "EXTRA COMPONENTS" );
+
+					for( int i = 0; i < diffExtraComponents.Length; i++ )
+					{
+						Rect component1Rect, component2Rect;
+						if( GetDiffRects( EditorGUIUtility.singleLineHeight, Color.clear, out component1Rect, out component2Rect ) )
+						{
+							// Draw extra components
+							if( diffExtraComponents[i].isComponentInDiffObject1 )
+							{
+								EditorGUI.PropertyField( component1Rect, windowSerialized.FindProperty( "diffExtraComponents" ).GetArrayElementAtIndex( i ).FindPropertyRelative( "component" ), GUIContent.none, false );
+								EditorGUI.DrawRect( component2Rect, MISSING_PROPERTY_COLOR );
+							}
+							else
+							{
+								EditorGUI.DrawRect( component1Rect, MISSING_PROPERTY_COLOR );
+								EditorGUI.PropertyField( component2Rect, windowSerialized.FindProperty( "diffExtraComponents" ).GetArrayElementAtIndex( i ).FindPropertyRelative( "component" ), GUIContent.none, false );
+							}
+
+							// Draw buttons to copy/destroy extra Components
+							GetCopyValueButtonRects( ref component1Rect, ref component2Rect );
+
+							if( GUI.Button( component1Rect, diffExtraComponents[i].isComponentInDiffObject1 ? DESTROY_COMPONENT_BUTTON : COPY_COMPONENT_TO_LEFT_BUTTON ) )
+								DiffExtraComponentCopyOrDestroyButtonClicked( diffExtraComponents[i], !diffExtraComponents[i].isComponentInDiffObject1 );
+							if( GUI.Button( component2Rect, diffExtraComponents[i].isComponentInDiffObject1 ? COPY_COMPONENT_TO_RIGHT_BUTTON : DESTROY_COMPONENT_BUTTON ) )
+								DiffExtraComponentCopyOrDestroyButtonClicked( diffExtraComponents[i], diffExtraComponents[i].isComponentInDiffObject1 );
+						}
+					}
+				}
 
 				// Apply any changes made to the displayed SerializedProperties
-				if( diffedSO1.targetObject )
-					diffedSO1.ApplyModifiedProperties();
-				if( diffedSO2.targetObject )
-					diffedSO2.ApplyModifiedProperties();
+				for( int i = 0; i < rootDiffNodes.Length; i++ )
+				{
+					if( rootDiffNodes[i].serializedObject1.targetObject )
+						rootDiffNodes[i].serializedObject1.ApplyModifiedProperties();
+					if( rootDiffNodes[i].serializedObject2.targetObject )
+						rootDiffNodes[i].serializedObject2.ApplyModifiedProperties();
+				}
 			}
 
 			scrollViewRect.height += DIFF_RESULTS_EDGE_PADDING;
@@ -184,7 +306,7 @@ namespace InspectPlusNamespace
 			Rect prop1Rect, prop2Rect;
 			if( node.type == DiffType.DifferentChildren )
 			{
-				bool isRootNode = node.prop1 == null || node.prop2 == null;
+				bool isRootNode = node is RootDiffNode;
 				if( !isRootNode )
 				{
 					// Highlight the background only if the SerializedProperty isn't expanded (to let the user know that there is a diff inside this DiffNode)
@@ -288,7 +410,9 @@ namespace InspectPlusNamespace
 			if( !node.prop1.serializedObject.targetObject || !node.prop2.serializedObject.targetObject )
 				return;
 
-			if( GUI.Button( new Rect( prop1Rect.xMax + COPY_VALUE_BUTTON_PADDING, prop1Rect.y, COPY_VALUE_BUTTON_WIDTH, EditorGUIUtility.singleLineHeight ), COPY_TO_OBJ1_BUTTON ) )
+			GetCopyValueButtonRects( ref prop1Rect, ref prop2Rect );
+
+			if( GUI.Button( prop1Rect, COPY_TO_OBJ1_BUTTON ) )
 			{
 				object obj2Value = node.prop2.CopyValue();
 				if( node.prop1.CanPasteValue( obj2Value, true ) )
@@ -300,7 +424,7 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			if( GUI.Button( new Rect( prop2Rect.x - COPY_VALUE_BUTTON_WIDTH - COPY_VALUE_BUTTON_PADDING, prop2Rect.y, COPY_VALUE_BUTTON_WIDTH, EditorGUIUtility.singleLineHeight ), COPY_TO_OBJ2_BUTTON ) )
+			if( GUI.Button( prop2Rect, COPY_TO_OBJ2_BUTTON ) )
 			{
 				object obj1Value = node.prop1.CopyValue();
 				if( node.prop2.CanPasteValue( obj1Value, true ) )
@@ -311,6 +435,25 @@ namespace InspectPlusNamespace
 					GUIUtility.ExitGUI();
 				}
 			}
+		}
+
+		private void DiffExtraComponentCopyOrDestroyButtonClicked( DiffExtraComponent extraComponent, bool copyOperation )
+		{
+			if( extraComponent.component )
+			{
+				if( !copyOperation )
+					Undo.DestroyObjectImmediate( extraComponent.component );
+				else if( extraComponent.missingGameObject )
+				{
+					if( UnityEditorInternal.ComponentUtility.CopyComponent( extraComponent.component ) )
+						UnityEditorInternal.ComponentUtility.PasteComponentAsNew( extraComponent.missingGameObject );
+					else
+						EditorUtility.CopySerialized( extraComponent.component, Undo.AddComponent( extraComponent.missingGameObject, extraComponent.component.GetType() ) );
+				}
+			}
+
+			RefreshDiff();
+			GUIUtility.ExitGUI();
 		}
 
 		// Calculate Rects to draw DiffNodes' SerializedProperties into
@@ -342,6 +485,15 @@ namespace InspectPlusNamespace
 			return true;
 		}
 
+		// Calculate Rects to draw copy value buttons for SerializerProperties into
+		private void GetCopyValueButtonRects( ref Rect prop1Rect, ref Rect prop2Rect )
+		{
+			prop1Rect.x = prop1Rect.xMax + COPY_VALUE_BUTTON_PADDING;
+			prop2Rect.x = prop2Rect.x - COPY_VALUE_BUTTON_WIDTH - COPY_VALUE_BUTTON_PADDING;
+			prop1Rect.width = COPY_VALUE_BUTTON_WIDTH;
+			prop2Rect.width = COPY_VALUE_BUTTON_WIDTH;
+		}
+
 		private Rect GetRect( float height )
 		{
 			Rect result = new Rect( scrollViewRect.x, scrollViewRect.yMax, scrollViewRect.width, height );
@@ -358,35 +510,94 @@ namespace InspectPlusNamespace
 			return result;
 		}
 
-		private void CalculateDiff( Object obj1, Object obj2, bool calculateElapsedTime )
+		private void CalculateDiff( Object obj1, Object obj2, bool isManualRefresh )
 		{
 			if( !obj1 || !obj2 || obj1 == obj2 )
 				return;
 
-			double startTime = calculateElapsedTime ? EditorApplication.timeSinceStartup : 0.0;
-			bool calculatingNewDiff = obj1 != diffedObj1 || obj2 != diffedObj2;
+			double startTime = isManualRefresh ? EditorApplication.timeSinceStartup : 0.0;
+			bool calculatingNewDiff = rootDiffNodes == null || rootDiffNodes.Length == 0 || obj1 != rootDiffNodes[0].diffObject1 || obj2 != rootDiffNodes[0].diffObject2;
 
-			diffedObj1 = obj1;
-			diffedObj2 = obj2;
+			List<RootDiffNode> _rootDiffNodes = new List<RootDiffNode>( 8 );
+			_rootDiffNodes.Add( CalculateDiffInternal( obj1, obj2, calculatingNewDiff ) );
 
-			diffedSO1 = new SerializedObject( obj1 );
-			diffedSO2 = new SerializedObject( obj2 );
+			// While diffing two GameObjects, diff their components, as well
+			if( obj1 as GameObject && obj2 as GameObject )
+			{
+				// Get components
+				List<Component> components1 = new List<Component>( 8 );
+				List<Component> components2 = new List<Component>( 8 );
 
-			rootDiffNode = new DiffNode( DiffType.DifferentChildren, null, null );
+				( (GameObject) obj1 ).GetComponents( components1 );
+				( (GameObject) obj2 ).GetComponents( components2 );
 
-			List<DiffNode> _diffNodes;
-			CompareProperties( diffedSO1.EnumerateDirectChildren(), diffedSO2.EnumerateDirectChildren(), out _diffNodes );
+				// Remove components with missing scripts from the lists
+				for( int i = components1.Count - 1; i >= 0; i-- )
+				{
+					if( !components1[i] )
+						components1.RemoveAt( i );
+				}
 
-			rootDiffNode.children = _diffNodes.ToArray();
+				for( int i = components2.Count - 1; i >= 0; i-- )
+				{
+					if( !components2[i] )
+						components2.RemoveAt( i );
+				}
 
-			if( calculatingNewDiff )
-				rootDiffNode.SetExpandedState();
+				// First component can either be Transform or RectTransform, they should be diffed regardless of the type
+				_rootDiffNodes.Add( CalculateDiffInternal( components1[0], components2[0], calculatingNewDiff ) );
+				components1.RemoveAt( 0 );
+				components2.RemoveAt( 0 );
 
-			if( calculateElapsedTime )
+				// Remaining components should be diffed only when the component exists on both GameObjects
+				for( int i = 0; i < components1.Count; i++ )
+				{
+					Type componentType = components1[i].GetType();
+					for( int j = 0; j < components2.Count; j++ )
+					{
+						if( components2[j].GetType() == componentType )
+						{
+							_rootDiffNodes.Add( CalculateDiffInternal( components1[i], components2[j], calculatingNewDiff ) );
+							components1.RemoveAt( i-- );
+							components2.RemoveAt( j );
+
+							break;
+						}
+					}
+				}
+
+				// Store the remaining components (extra components) in an array so that they can be drawn as missing components
+				diffExtraComponents = new DiffExtraComponent[components1.Count + components2.Count];
+				for( int i = 0; i < components1.Count; i++ )
+					diffExtraComponents[i] = new DiffExtraComponent() { component = components1[i], missingGameObject = (GameObject) obj2, isComponentInDiffObject1 = true };
+				for( int i = 0, offset = components1.Count; i < components2.Count; i++ )
+					diffExtraComponents[i + offset] = new DiffExtraComponent() { component = components2[i], missingGameObject = (GameObject) obj1, isComponentInDiffObject1 = false };
+			}
+			else
+				diffExtraComponents = null;
+
+			rootDiffNodes = _rootDiffNodes.ToArray();
+
+			if( isManualRefresh )
 				Debug.Log( string.Concat( "Calculated diff in ", ( EditorApplication.timeSinceStartup - startTime ).ToString( "F3" ), " seconds." ) );
 		}
 
-		private void CompareProperties( IEnumerable<SerializedProperty> properties1, IEnumerable<SerializedProperty> properties2, out List<DiffNode> diffNodes )
+		private RootDiffNode CalculateDiffInternal( Object obj1, Object obj2, bool calculatingNewDiff )
+		{
+			SerializedObject diffedSO1 = new SerializedObject( obj1 );
+			SerializedObject diffedSO2 = new SerializedObject( obj2 );
+
+			List<DiffNode> diffNodes;
+			CompareProperties( diffedSO1.EnumerateDirectChildren(), diffedSO2.EnumerateDirectChildren(), diffedSO1, diffedSO2, out diffNodes );
+
+			RootDiffNode rootDiffNode = new RootDiffNode( diffedSO1, diffedSO2, diffNodes.ToArray() );
+			if( calculatingNewDiff )
+				rootDiffNode.SetExpandedState();
+
+			return rootDiffNode;
+		}
+
+		private void CompareProperties( IEnumerable<SerializedProperty> properties1, IEnumerable<SerializedProperty> properties2, SerializedObject diffedSO1, SerializedObject diffedSO2, out List<DiffNode> diffNodes )
 		{
 			diffNodes = new List<DiffNode>( 8 );
 			Dictionary<string, SerializedProperty> childProperties2 = new Dictionary<string, SerializedProperty>( 32 );
@@ -423,13 +634,13 @@ namespace InspectPlusNamespace
 					{
 						List<DiffNode> _diffNodes;
 						if( childProp1.isArray && childProp2.isArray )
-							CompareProperties( EnumerateArrayElements( childProp1.Copy() ), EnumerateArrayElements( childProp2.Copy() ), out _diffNodes );
+							CompareProperties( EnumerateArrayElements( childProp1.Copy() ), EnumerateArrayElements( childProp2.Copy() ), diffedSO1, diffedSO2, out _diffNodes );
 #if UNITY_2017_1_OR_NEWER
 						else if( childProp1.isFixedBuffer && childProp2.isFixedBuffer )
-							CompareProperties( EnumerateFixedBufferElements( childProp1.Copy() ), EnumerateFixedBufferElements( childProp2.Copy() ), out _diffNodes );
+							CompareProperties( EnumerateFixedBufferElements( childProp1.Copy() ), EnumerateFixedBufferElements( childProp2.Copy() ), diffedSO1, diffedSO2, out _diffNodes );
 #endif
 						else if( childProp1.hasChildren && childProp2.hasChildren )
-							CompareProperties( childProp1.EnumerateDirectChildren(), childProp2.EnumerateDirectChildren(), out _diffNodes );
+							CompareProperties( childProp1.EnumerateDirectChildren(), childProp2.EnumerateDirectChildren(), diffedSO1, diffedSO2, out _diffNodes );
 						else
 						{
 							diffNodes.Add( new DiffNode( childProp1.hasChildren || childProp2.hasChildren ? DiffType.Different : DiffType.Same, diffedSO1.FindProperty( propertyPath ), diffedSO2.FindProperty( propertyPath ) ) );
