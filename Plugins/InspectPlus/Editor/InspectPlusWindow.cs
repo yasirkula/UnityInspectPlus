@@ -105,6 +105,12 @@ namespace InspectPlusNamespace
 		private Editor projectWindowSelectionEditor;
 		private InspectPlusWindow projectWindowBoundInspector;
 
+		[SerializeField]
+		private CustomHierarchyWindow hierarchyWindow = new CustomHierarchyWindow();
+		private bool showHierarchyWindow;
+		private bool syncHierarchyWindowSelection;
+		private InspectPlusWindow hierarchyWindowBoundInspector;
+
 #if UNITY_2017_2_OR_NEWER
 		private bool changingPlayMode;
 #endif
@@ -231,6 +237,7 @@ namespace InspectPlusNamespace
 			showFavorites = InspectPlusSettings.Instance.ShowFavoritesByDefault;
 			showHistory = InspectPlusSettings.Instance.ShowHistoryByDefault;
 			syncProjectWindowSelection = InspectPlusSettings.Instance.SyncProjectWindowSelection;
+			syncHierarchyWindowSelection = InspectPlusSettings.Instance.SyncIsolatedHierarchyWindowSelection;
 
 			// Window is restored after Unity is closed and then reopened
 			if( history.Count > 0 )
@@ -280,6 +287,10 @@ namespace InspectPlusNamespace
 			projectWindow.OnSelectionChanged = ProjectWindowSelectionChanged;
 			if( projectWindow.GetTreeView() != null )
 				ProjectWindowSelectionChanged( projectWindow.GetTreeView().GetSelection() );
+
+			hierarchyWindow.OnSelectionChanged = HierarchyWindowSelectionChanged;
+			if( hierarchyWindow.GetTreeView() != null )
+				HierarchyWindowSelectionChanged( hierarchyWindow.GetTreeView().GetSelection() );
 
 			RefreshSettings();
 		}
@@ -373,6 +384,9 @@ namespace InspectPlusNamespace
 
 				if( projectWindow.GetTreeView() != null )
 					ProjectWindowSelectionChanged( projectWindow.GetTreeView().GetSelection() );
+
+				if( hierarchyWindow.GetTreeView() != null )
+					HierarchyWindowSelectionChanged( hierarchyWindow.GetTreeView().GetSelection() );
 			}
 		}
 #endif
@@ -439,9 +453,8 @@ namespace InspectPlusNamespace
 				{
 					syncProjectWindowSelection = !syncProjectWindowSelection;
 
-					CustomProjectWindowDrawer treeView = projectWindow.GetTreeView();
-					if( treeView != null )
-						treeView.SyncSelection = syncProjectWindowSelection;
+					if( projectWindow.GetTreeView() != null )
+						projectWindow.GetTreeView().SyncSelection = syncProjectWindowSelection;
 				} );
 
 				menu.AddItem( new GUIContent( "Synchronize Selection With Inspect+" ), projectWindowBoundInspector, () =>
@@ -454,6 +467,31 @@ namespace InspectPlusNamespace
 
 						if( projectWindow.GetTreeView() != null )
 							ProjectWindowSelectionChanged( projectWindow.GetTreeView().GetSelection() );
+					}
+				} );
+
+				menu.AddSeparator( "" );
+			}
+			else if( showHierarchyWindow )
+			{
+				menu.AddItem( new GUIContent( "Synchronize Selection With Unity" ), syncHierarchyWindowSelection, () =>
+				{
+					syncHierarchyWindowSelection = !syncHierarchyWindowSelection;
+
+					if( hierarchyWindow.GetTreeView() != null )
+						hierarchyWindow.GetTreeView().SyncSelection = syncHierarchyWindowSelection;
+				} );
+
+				menu.AddItem( new GUIContent( "Synchronize Selection With Inspect+" ), hierarchyWindowBoundInspector, () =>
+				{
+					if( hierarchyWindowBoundInspector )
+						hierarchyWindowBoundInspector = null;
+					else
+					{
+						hierarchyWindowBoundInspector = GetNewWindow();
+
+						if( hierarchyWindow.GetTreeView() != null )
+							HierarchyWindowSelectionChanged( hierarchyWindow.GetTreeView().GetSelection() );
 					}
 				} );
 
@@ -799,13 +837,23 @@ namespace InspectPlusNamespace
 
 			SetInspectorAssetDrawer( _inspectorAssetDrawer );
 
+			if( obj is IsolatedHierarchy )
+			{
+				hierarchyWindow.Show( ( (IsolatedHierarchy) obj ).rootTransform );
+				hierarchyWindow.GetTreeView().SyncSelection = syncHierarchyWindowSelection;
+
+				showHierarchyWindow = true;
+			}
+			else
+				showHierarchyWindow = false;
+
 #if UNITY_2017_1_OR_NEWER
 			if( !inspectorAssetDrawer || inspectorAssetDrawer.showImportedObject )
 #else
 			if( !inspectorAssetDrawer || (bool) assetImporterShowImportedObjectProperty.GetValue( inspectorAssetDrawer, null ) )
 #endif
 			{
-				if( obj is GameObject )
+				if( !showHierarchyWindow && obj is GameObject )
 				{
 					components.Clear();
 					( (GameObject) obj ).GetComponents( components );
@@ -818,6 +866,8 @@ namespace InspectPlusNamespace
 							CreateEditorFor( components[i] );
 					}
 				}
+				else if( showHierarchyWindow && ( (IsolatedHierarchy) obj ).rootTransform )
+					CreateEditorFor( ( (IsolatedHierarchy) obj ).rootTransform.gameObject ); // Use GameObject's header instead of IsolatedHierarchy's header
 				else
 					CreateEditorFor( obj );
 			}
@@ -874,13 +924,25 @@ namespace InspectPlusNamespace
 			}
 #endif
 
-			titleContent = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) )
+			GUIContent tabTitle = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) )
 			{
 				text = obj.name,
 #if UNITY_2019_3_OR_NEWER
 				tooltip = string.Concat( titleTooltip, " (", obj.GetType().Name, ")" )
 #endif
 			};
+
+			if( showHierarchyWindow )
+			{
+				// Alternative: "UnityEditor.SceneHierarchyWindow"
+#if UNITY_2019_3_OR_NEWER
+				tabTitle.image = EditorGUIUtility.Load( EditorGUIUtility.isProSkin ? "ViewToolOrbit On@2x" : "ViewToolOrbit@2x" ) as Texture;
+#else
+				tabTitle.image = EditorGUIUtility.Load( EditorGUIUtility.isProSkin ? "ViewToolOrbit On" : "ViewToolOrbit" ) as Texture;
+#endif
+			}
+
+			titleContent = tabTitle;
 		}
 		#endregion
 
@@ -966,6 +1028,12 @@ namespace InspectPlusNamespace
 				projectWindow.Refresh();
 		}
 
+		private void OnHierarchyChange()
+		{
+			if( showHierarchyWindow )
+				hierarchyWindow.Refresh();
+		}
+
 		private void ProjectWindowSelectionChanged( IList<int> newSelection )
 		{
 			DestroyImmediate( projectWindowSelectionEditor );
@@ -994,6 +1062,18 @@ namespace InspectPlusNamespace
 				{
 					projectWindowBoundInspector.InspectInternal( selection[selection.Length - 1], true );
 					projectWindowBoundInspector.shouldRepaint = true;
+				}
+			}
+		}
+
+		private void HierarchyWindowSelectionChanged( IList<int> newSelection )
+		{
+			if( newSelection != null && newSelection.Count > 0 )
+			{
+				if( hierarchyWindowBoundInspector )
+				{
+					hierarchyWindowBoundInspector.InspectInternal( EditorUtility.InstanceIDToObject( newSelection[newSelection.Count - 1] ) as GameObject, true );
+					hierarchyWindowBoundInspector.shouldRepaint = true;
 				}
 			}
 		}
@@ -1048,7 +1128,7 @@ namespace InspectPlusNamespace
 					pendingScrollAmount = 0f;
 			}
 
-			if( !mainObject )
+			if( !mainObject || mainObject.Equals( null ) ) // Using Equals here is useful for IsolatedHierarchy
 				return;
 
 			if( ev.type == EventType.MouseEnterWindow )
@@ -1102,7 +1182,58 @@ namespace InspectPlusNamespace
 					}
 				}
 
-				if( inspectorDrawerCount > 0 )
+				if( showProjectWindow )
+				{
+					if( inspectorDrawerCount > 0 )
+						inspectorDrawers[0].DrawHeader();
+
+					// Get rid of the free space above the project window's header
+#if UNITY_2019_3_OR_NEWER
+					GUILayout.Space( -3 );
+#else
+					GUILayout.Space( -4 );
+#endif
+
+					projectWindow.OnGUI();
+
+					// This happens only when the mouse click is not captured by project window's TreeView
+					// In this case, clear project window's selection
+					if( ev.type == EventType.MouseDown && ev.button == 0 )
+					{
+						projectWindow.GetTreeView().SetSelection( new int[0] );
+						ProjectWindowSelectionChanged( null );
+
+						shouldRepaint = true;
+					}
+				}
+				else if( showHierarchyWindow )
+				{
+					if( inspectorDrawerCount > 0 )
+						inspectorDrawers[0].DrawHeader();
+
+
+					// Avoid overlapping hierarchy window's header
+#if UNITY_2019_3_OR_NEWER
+					GUILayout.Space( -3 );
+#elif UNITY_2018_2_OR_NEWER
+					GUILayout.Space( -5 );
+#else
+					GUILayout.Space( 3 );
+#endif
+
+					hierarchyWindow.OnGUI();
+
+					// This happens only when the mouse click is not captured by hierarchy window's TreeView
+					// In this case, clear hierarchy window's selection
+					if( ev.type == EventType.MouseDown && ev.button == 0 )
+					{
+						hierarchyWindow.GetTreeView().SetSelection( new int[0] );
+						HierarchyWindowSelectionChanged( null );
+
+						shouldRepaint = true;
+					}
+				}
+				else if( inspectorDrawerCount > 0 )
 				{
 					AdjustLabelWidth( windowWidth );
 
@@ -1153,22 +1284,6 @@ namespace InspectPlusNamespace
 
 				EditorGUIUtility.wideMode = originalWideMode;
 				EditorGUIUtility.labelWidth = originalLabelWidth;
-
-				if( showProjectWindow )
-				{
-					GUILayout.Space( -4 ); // Get rid of the free space above the project window's header
-					projectWindow.OnGUI();
-
-					// This happens only when the mouse click is not captured by project window's TreeView
-					// In this case, clear project window's selection
-					if( ev.type == EventType.MouseDown && ev.button == 0 )
-					{
-						projectWindow.GetTreeView().SetSelection( new int[0] );
-						ProjectWindowSelectionChanged( null );
-
-						shouldRepaint = true;
-					}
-				}
 			}
 
 #if APPLY_HORIZONTAL_PADDING
@@ -1183,7 +1298,12 @@ namespace InspectPlusNamespace
 
 			if( !debugMode )
 			{
-				if( !showProjectWindow )
+				if( showProjectWindow )
+				{
+					if( projectWindowSelectionEditor && projectWindowSelectionEditor.HasPreviewGUI() )
+						DrawPreview( projectWindowSelectionEditor );
+				}
+				else if( !showHierarchyWindow )
 				{
 					if( inspectorAssetDrawer && inspectorAssetDrawer.HasPreviewGUI() )
 						DrawPreview( inspectorAssetDrawer );
@@ -1198,11 +1318,6 @@ namespace InspectPlusNamespace
 							}
 						}
 					}
-				}
-				else
-				{
-					if( projectWindowSelectionEditor && projectWindowSelectionEditor.HasPreviewGUI() )
-						DrawPreview( projectWindowSelectionEditor );
 				}
 			}
 		}

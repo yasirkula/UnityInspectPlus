@@ -14,10 +14,12 @@ namespace InspectPlusNamespace
 	[System.Serializable]
 	public class CustomProjectWindow
 	{
+#pragma warning disable 0649
 		[SerializeField]
 		private TreeViewState treeViewState;
 		[SerializeField]
 		private string rootDirectory;
+#pragma warning restore 0649
 
 		private CustomProjectWindowDrawer treeView;
 		private SearchField searchField;
@@ -381,7 +383,7 @@ namespace InspectPlusNamespace
 			Event e = Event.current;
 			if( ( e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand ) && HasSelection() )
 			{
-				if( ( e.commandName == "Delete" || e.commandName == "SoftDelete" ) )
+				if( e.commandName == "Delete" || e.commandName == "SoftDelete" )
 				{
 					if( e.type == EventType.ExecuteCommand )
 						DeleteAssets( GetSelection(), e.commandName == "SoftDelete" );

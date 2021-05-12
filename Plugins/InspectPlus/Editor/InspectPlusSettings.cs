@@ -78,6 +78,10 @@ namespace InspectPlusNamespace
 		[Space]
 		[Tooltip( "While inspecting a folder, selecting files/folders inside that folder will update Unity's selection, as well" )]
 		public bool SyncProjectWindowSelection = true;
+		[Tooltip( "While inspecting an object's Isolated Hierarchy, selecting child objects inside that hierarchy will update Unity's selection, as well" )]
+		public bool SyncIsolatedHierarchyWindowSelection = true;
+
+		[Space]
 		[Tooltip( "Selecting an object in Favorites or History will highlight the object in Hierarchy/Project" )]
 		public bool AutomaticallyPingSelectedObject = true;
 		[Tooltip( "Clearing the History via context menu will delete the currently inspected object's History entry, as well" )]

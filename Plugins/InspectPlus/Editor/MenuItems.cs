@@ -12,6 +12,8 @@ namespace InspectPlusNamespace
 		internal const string NEW_TAB_LABEL = "Open In New Tab";
 		internal const string NEW_WINDOW_LABEL = "Open In New Window";
 
+		private const string CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_TAB_LABEL = "Isolated Hierarchy/Open In New Tab";
+		private const string CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_WINDOW_LABEL = "Isolated Hierarchy/Open In New Window";
 		private const string CONTEXT_COPY_LABEL = "Copy (Inspect+)";
 		private const string CONTEXT_COPY_COMPONENT_LABEL = "Copy Component (Inspect+)";
 		private const string CONTEXT_COPY_REFERENCE_LABEL = "Copy/Reference";
@@ -79,6 +81,53 @@ namespace InspectPlusNamespace
 		private static void ContextMenuItemNewWindow( MenuCommand command )
 		{
 			InspectPlusWindow.Inspect( command.context, true );
+		}
+		#endregion
+
+		#region Isolated Hierarchy Buttons
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_TAB_LABEL, priority = 50 )]
+		private static void ContextMenuItemOpenIsolatedHierarchyNewTab( MenuCommand command )
+		{
+			OpenIsolatedHierarchy( command, false );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_WINDOW_LABEL, priority = 50 )]
+		private static void ContextMenuItemOpenIsolatedHierarchyNewWindow( MenuCommand command )
+		{
+			OpenIsolatedHierarchy( command, true );
+		}
+
+		private static void OpenIsolatedHierarchy( MenuCommand command, bool newWindow )
+		{
+			Object[] objs;
+			if( command.context )
+				objs = new Object[1] { PreferablyGameObject( command.context ) };
+			else
+				objs = PreferablyGameObject( Selection.GetFiltered<Object>( SelectionMode.TopLevel | SelectionMode.ExcludePrefab | SelectionMode.Editable ) );
+
+			for( int i = 0; i < objs.Length; i++ )
+			{
+				if( objs[i] as GameObject )
+				{
+					IsolatedHierarchy isolatedHierarchy = ScriptableObject.CreateInstance<IsolatedHierarchy>();
+					isolatedHierarchy.name = objs[i].name;
+					isolatedHierarchy.rootTransform = ( (GameObject) objs[i] ).transform;
+					isolatedHierarchy.hideFlags = HideFlags.DontSave;
+
+					objs[i] = isolatedHierarchy;
+				}
+				else
+					objs[i] = null;
+			}
+
+			InspectPlusWindow.Inspect( objs, newWindow );
+		}
+
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_TAB_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_WINDOW_LABEL, validate = true )]
+		private static bool ContextMenuItemOpenIsolatedHierarchyValidate( MenuCommand command )
+		{
+			return Selection.GetFiltered<GameObject>( SelectionMode.TopLevel | SelectionMode.ExcludePrefab | SelectionMode.Editable ).Length > 0;
 		}
 		#endregion
 
