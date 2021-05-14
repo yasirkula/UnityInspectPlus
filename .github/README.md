@@ -21,6 +21,7 @@ There are 4 ways to install this plugin:
   - right clicking an object in *Project* or *Hierarchy* windows
   - right clicking an *Object* variable in the Inspector
   - right clicking a component in the Inspector
+  - selecting **Window/Inspect+/New Window** menu item
 
 ![screenshot](Images/InspectPlusWindow.png)
 
@@ -42,6 +43,10 @@ There are 4 ways to install this plugin:
 - You can right click an object in Hierarchy and select the **Isolated Hierarchy** option to open a Hierarchy window that displays only that object's children
 
 ![screenshot](Images/IsolatedHierarchy.png)
+
+- You can open a folder with Inspect+ to see its contents in an isolated Project view
+
+![screenshot](Images/IsolatedFolder.png)
 
 - You can open Paste Bin via **Window/Inspect+/Paste Bin**: this window lists the copied variables and is shared between all Unity projects (so, copying a value in Project A will make that value available in Project B). You can also right click variables, components or materials in the Inspector and select **Paste Values From Bin** to quickly select and paste a value from Paste Bin
 
