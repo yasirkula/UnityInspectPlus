@@ -438,12 +438,6 @@ namespace InspectPlusNamespace
 			SaveClipboard();
 		}
 
-		[Serializable]
-		private class SystemBufferWrapper
-		{
-			public byte[] serializedClipboard;
-		}
-
 		private void CopyClipboardToSystemBuffer( object obj )
 		{
 			int index = (int) obj;
@@ -453,7 +447,7 @@ namespace InspectPlusNamespace
 				using( BinaryWriter writer = new BinaryWriter( stream ) )
 				{
 					clipboard[index].Serialize( writer );
-					GUIUtility.systemCopyBuffer = "Inspect+" + JsonUtility.ToJson( new SystemBufferWrapper() { serializedClipboard = stream.ToArray() }, false );
+					GUIUtility.systemCopyBuffer = "Inspect+" + Convert.ToBase64String( stream.ToArray() );
 				}
 			}
 		}
@@ -465,14 +459,7 @@ namespace InspectPlusNamespace
 			if( string.IsNullOrEmpty( systemBuffer ) || !systemBuffer.StartsWith( "Inspect+", StringComparison.Ordinal ) )
 				return;
 
-			SystemBufferWrapper wrapper = JsonUtility.FromJson<SystemBufferWrapper>( systemBuffer.Substring( 8 ) );
-			if( wrapper == null )
-			{
-				Debug.LogError( "Couldn't parse JSON data" );
-				return;
-			}
-
-			using( MemoryStream stream = new MemoryStream( wrapper.serializedClipboard ) )
+			using( MemoryStream stream = new MemoryStream( Convert.FromBase64String( systemBuffer.Substring( 8 ) ) ) )
 			using( BinaryReader reader = new BinaryReader( stream ) )
 			{
 				SerializedClipboard _clipboard = new SerializedClipboard( reader );
