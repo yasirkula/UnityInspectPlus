@@ -4,7 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
-#if UNITY_2017_1_OR_NEWER
+#if UNITY_2020_2_OR_NEWER
+using UnityEditor.AssetImporters;
+#elif UNITY_2017_1_OR_NEWER
 using UnityEditor.Experimental.AssetImporters;
 #endif
 using UnityEngine;
