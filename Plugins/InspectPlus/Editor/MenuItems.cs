@@ -12,27 +12,6 @@ namespace InspectPlusNamespace
 		internal const string NEW_TAB_LABEL = "Open In New Tab";
 		internal const string NEW_WINDOW_LABEL = "Open In New Window";
 
-		private const string CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_TAB_LABEL = "Isolated Hierarchy/Open In New Tab";
-		private const string CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_WINDOW_LABEL = "Isolated Hierarchy/Open In New Window";
-		private const string CONTEXT_COPY_LABEL = "Copy (Inspect+)";
-		private const string CONTEXT_COPY_COMPONENT_LABEL = "Copy Component (Inspect+)";
-		private const string CONTEXT_COPY_REFERENCE_LABEL = "Copy/Reference";
-		private const string CONTEXT_COPY_ASSET_FILES_LABEL = "Copy/Asset File(s)";
-		private const string CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL = "Copy/Complete GameObject (This Object Only)";
-		private const string CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL = "Copy/Complete GameObject (Include Children)";
-		private const string CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL = "Paste/Complete GameObject";
-		private const string CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL = "Paste/Complete GameObject From Bin";
-		private const string CONTEXT_PASTE_ASSET_FILES_LABEL = "Paste/Asset File(s)";
-		private const string CONTEXT_PASTE_ASSET_FILES_FROM_BIN_LABEL = "Paste/Asset File(s) From Bin";
-		private const string CONTEXT_PASTE_LABEL = "Paste (Inspect+)";
-		private const string CONTEXT_PASTE_VALUES_LABEL = "Paste Values (Inspect+)";
-		private const string CONTEXT_PASTE_COMPONENT_VALUES_LABEL = "Paste Component Values (Inspect+)";
-		private const string CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL = "Paste Component As New (Inspect+)";
-		private const string CONTEXT_PASTE_FROM_BIN_LABEL = "Paste From Bin (Inspect+)";
-		private const string CONTEXT_PASTE_VALUES_FROM_BIN_LABEL = "Paste Values From Bin (Inspect+)";
-		private const string CONTEXT_PASTE_COMPONENT_VALUES_FROM_BIN_LABEL = "Paste Component Values From Bin (Inspect+)";
-		private const string CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL = "Paste Component As New From Bin (Inspect+)";
-
 		private static List<Object> objectsToOpenPasteBinWith;
 
 		#region New Tab/Window Buttons
@@ -65,19 +44,33 @@ namespace InspectPlusNamespace
 			return Selection.objects.Length > 0;
 		}
 
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/AssetImporter/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
+#else
 		[MenuItem( "CONTEXT/Component/" + NEW_TAB_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_TAB_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/AssetImporter/" + NEW_TAB_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/Material/" + NEW_TAB_LABEL, priority = 1500 )]
+#endif
 		private static void ContextMenuItemNewTab( MenuCommand command )
 		{
 			InspectPlusWindow.Inspect( command.context, false );
 		}
 
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/AssetImporter/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
+#else
 		[MenuItem( "CONTEXT/Component/" + NEW_WINDOW_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_WINDOW_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/AssetImporter/" + NEW_WINDOW_LABEL, priority = 1500 )]
 		[MenuItem( "CONTEXT/Material/" + NEW_WINDOW_LABEL, priority = 1500 )]
+#endif
 		private static void ContextMenuItemNewWindow( MenuCommand command )
 		{
 			InspectPlusWindow.Inspect( command.context, true );
@@ -85,13 +78,13 @@ namespace InspectPlusNamespace
 		#endregion
 
 		#region Isolated Hierarchy Buttons
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_TAB_LABEL, priority = 50 )]
+		[MenuItem( "GameObject/Inspect+/Isolated Hierarchy/Open In New Tab", priority = 50 )]
 		private static void ContextMenuItemOpenIsolatedHierarchyNewTab( MenuCommand command )
 		{
 			OpenIsolatedHierarchy( command, false );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_WINDOW_LABEL, priority = 50 )]
+		[MenuItem( "GameObject/Inspect+/Isolated Hierarchy/Open In New Window", priority = 50 )]
 		private static void ContextMenuItemOpenIsolatedHierarchyNewWindow( MenuCommand command )
 		{
 			OpenIsolatedHierarchy( command, true );
@@ -123,8 +116,8 @@ namespace InspectPlusNamespace
 			InspectPlusWindow.Inspect( objs, newWindow );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_TAB_LABEL, validate = true )]
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_OPEN_ISOLATED_HIERARCHY_NEW_WINDOW_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/Isolated Hierarchy/Open In New Tab", validate = true )]
+		[MenuItem( "GameObject/Inspect+/Isolated Hierarchy/Open In New Window", validate = true )]
 		private static bool ContextMenuItemOpenIsolatedHierarchyValidate( MenuCommand command )
 		{
 			return Selection.GetFiltered<GameObject>( SelectionMode.TopLevel | SelectionMode.ExcludePrefab | SelectionMode.Editable ).Length > 0;
@@ -132,11 +125,17 @@ namespace InspectPlusNamespace
 		#endregion
 
 		#region Copy/Paste Buttons
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, priority = 50 )]
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, priority = 1501 )]
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_COPY_COMPONENT_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_COPY_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_COPY_LABEL, priority = 1450 )]
+		[MenuItem( "GameObject/Inspect+/Copy/Reference", priority = 50 )]
+		[MenuItem( "Assets/Inspect+/Copy/Reference", priority = 1501 )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Component", priority = 1500 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Copy", priority = 1500 )]
+		[MenuItem( "CONTEXT/Material/Inspect+/Copy", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Copy Component (Inspect+)", priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Copy (Inspect+)", priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/Copy (Inspect+)", priority = 1450 )]
+#endif
 		private static void ContextMenuItemCopyObject( MenuCommand command )
 		{
 			if( command.context )
@@ -145,14 +144,51 @@ namespace InspectPlusNamespace
 				PasteBinWindow.AddToClipboard( Selection.activeObject, Utilities.GetDetailedObjectName( Selection.activeObject ), Selection.activeObject );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL, priority = 1450 )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Multiple Components...", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Copy Multiple Components... (Inspect+)", priority = 1450 )]
+#endif
+		private static void ContextMenuItemCopyMultipleComponents( MenuCommand command )
+		{
+			// When multiple components are inspected, show the "Select components to copy" window for only the first component
+			if( command.context )
+			{
+				if( objectsToOpenPasteBinWith == null )
+					objectsToOpenPasteBinWith = new List<Object>( 2 ) { command.context };
+
+				EditorApplication.update -= CallCopyMultipleComponentsOnce;
+				EditorApplication.update += CallCopyMultipleComponentsOnce;
+			}
+			else if( objectsToOpenPasteBinWith != null )
+			{
+				ScriptableObject.CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( ( (Component) objectsToOpenPasteBinWith[0] ).GetComponents<Component>() );
+				objectsToOpenPasteBinWith = null;
+			}
+		}
+
+		private static void CallCopyMultipleComponentsOnce()
+		{
+			EditorApplication.update -= CallCopyMultipleComponentsOnce;
+			ContextMenuItemCopyMultipleComponents( new MenuCommand( null ) );
+		}
+
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component As New (Inspect+)", priority = 1450 )]
+#endif
 		private static void ContextMenuItemPasteComponentAsNew( MenuCommand command )
 		{
 			if( PasteBinWindow.ActiveClipboard != null )
 				PasteBinWindow.ActiveClipboard.PasteAsNewComponent( command.context as Component );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL, priority = 1450 )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New From Bin", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component As New From Bin (Inspect+)", priority = 1450 )]
+#endif
 		private static void ContextMenuItemPasteComponentAsNewFromBin( MenuCommand command )
 		{
 			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
@@ -179,18 +215,30 @@ namespace InspectPlusNamespace
 			ContextMenuItemPasteComponentAsNewFromBin( new MenuCommand( null ) );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_LABEL, priority = 1450 )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values", priority = 1500 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values", priority = 1500 )]
+		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component Values (Inspect+)", priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Paste Values (Inspect+)", priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/Paste Values (Inspect+)", priority = 1450 )]
+#endif
 		private static void ContextMenuItemPasteObject( MenuCommand command )
 		{
 			if( PasteBinWindow.ActiveClipboard != null )
 				PasteBinWindow.ActiveClipboard.PasteToObject( command.context );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_FROM_BIN_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_FROM_BIN_LABEL, priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_FROM_BIN_LABEL, priority = 1450 )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values From Bin", priority = 1500 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values From Bin", priority = 1500 )]
+		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values From Bin", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component Values From Bin (Inspect+)", priority = 1450 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Paste Values From Bin (Inspect+)", priority = 1450 )]
+		[MenuItem( "CONTEXT/Material/Paste Values From Bin (Inspect+)", priority = 1450 )]
+#endif
 		private static void ContextMenuItemPasteObjectFromBin( MenuCommand command )
 		{
 			// This happens when this button is clicked while multiple Objects were selected. In this case,
@@ -221,39 +269,161 @@ namespace InspectPlusNamespace
 			ContextMenuItemPasteObjectFromBin( new MenuCommand( null ) );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_LABEL, validate = true )]
-		private static bool ContextMenuItemPasteComponentAsNewValidate( MenuCommand command )
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components...", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Multiple Components... (Inspect+)", priority = 1450 )]
+#endif
+		private static void MenuItemPasteComponentGroup( MenuCommand command )
 		{
-			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context as Component );
+			// When multiple GameObjects are inspected, show the "Select components to paste" window for all the selected GameObjects at once
+			if( command.context )
+			{
+				GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
+				if( gameObject )
+				{
+					if( objectsToOpenPasteBinWith == null )
+						objectsToOpenPasteBinWith = new List<Object>( 2 ) { gameObject };
+					else if( !objectsToOpenPasteBinWith.Contains( gameObject ) )
+						objectsToOpenPasteBinWith.Add( gameObject );
+
+					EditorApplication.update -= CallPasteComponentGroupOnce;
+					EditorApplication.update += CallPasteComponentGroupOnce;
+				}
+			}
+			else if( objectsToOpenPasteBinWith != null )
+			{
+				if( PasteBinWindow.ActiveClipboard != null )
+					ScriptableObject.CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( (SerializedClipboard.IPComponentGroup) PasteBinWindow.ActiveClipboard.RootValue, objectsToOpenPasteBinWith.ToArray() );
+
+				objectsToOpenPasteBinWith = null;
+			}
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_AS_NEW_FROM_BIN_LABEL, validate = true )]
-		private static bool ContextMenuItemPasteComponentAsNewFromBinValidate( MenuCommand command )
+		private static void CallPasteComponentGroupOnce()
 		{
-			return ValidatePasteOperation( command );
+			EditorApplication.update -= CallPasteComponentGroupOnce;
+			MenuItemPasteComponentGroup( new MenuCommand( null ) );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, validate = true )]
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_REFERENCE_LABEL, validate = true )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components From Bin...", priority = 1500 )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Multiple Components From Bin... (Inspect+)", priority = 1450 )]
+#endif
+		private static void MenuItemPasteComponentGroupFromBin( MenuCommand command )
+		{
+			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
+			if( command.context )
+			{
+				GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
+				if( gameObject )
+				{
+					if( objectsToOpenPasteBinWith == null )
+						objectsToOpenPasteBinWith = new List<Object>( 2 ) { gameObject };
+					else if( !objectsToOpenPasteBinWith.Contains( gameObject ) )
+						objectsToOpenPasteBinWith.Add( gameObject );
+
+					EditorApplication.update -= CallPasteComponentGroupFromBinOnce;
+					EditorApplication.update += CallPasteComponentGroupFromBinOnce;
+				}
+			}
+			else if( objectsToOpenPasteBinWith != null )
+			{
+				PasteComponentGroupFromBin( objectsToOpenPasteBinWith.ToArray() );
+				objectsToOpenPasteBinWith = null;
+			}
+		}
+
+		private static void CallPasteComponentGroupFromBinOnce()
+		{
+			EditorApplication.update -= CallPasteComponentGroupFromBinOnce;
+			MenuItemPasteComponentGroupFromBin( new MenuCommand( null ) );
+		}
+
+		[MenuItem( "GameObject/Inspect+/Copy/Reference", validate = true )]
+		[MenuItem( "Assets/Inspect+/Copy/Reference", validate = true )]
 		private static bool ContextMenuItemCopyObjectValidate( MenuCommand command )
 		{
 			return Selection.activeObject;
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_LABEL, validate = true )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_LABEL, validate = true )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Multiple Components...", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Copy Multiple Components... (Inspect+)", validate = true )]
+#endif
+		private static bool ContextMenuItemCopyComponentGroupValidate( MenuCommand command )
+		{
+			return command.context;
+		}
+
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component As New (Inspect+)", validate = true )]
+#endif
+		private static bool ContextMenuItemPasteComponentAsNewValidate( MenuCommand command )
+		{
+			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context as Component );
+		}
+
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New From Bin", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component As New From Bin (Inspect+)", validate = true )]
+#endif
+		private static bool ContextMenuItemPasteComponentAsNewFromBinValidate( MenuCommand command )
+		{
+			return ValidatePasteOperation( command );
+		}
+
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values", validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values", validate = true )]
+		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component Values (Inspect+)", validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/Paste Values (Inspect+)", validate = true )]
+		[MenuItem( "CONTEXT/Material/Paste Values (Inspect+)", validate = true )]
+#endif
 		private static bool ContextMenuItemPasteObjectValidate( MenuCommand command )
 		{
 			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteToObject( command.context );
 		}
 
-		[MenuItem( "CONTEXT/Component/" + CONTEXT_PASTE_COMPONENT_VALUES_FROM_BIN_LABEL, validate = true )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + CONTEXT_PASTE_VALUES_FROM_BIN_LABEL, validate = true )]
-		[MenuItem( "CONTEXT/Material/" + CONTEXT_PASTE_VALUES_FROM_BIN_LABEL, validate = true )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values From Bin", validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values From Bin", validate = true )]
+		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values From Bin", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Component Values From Bin (Inspect+)", validate = true )]
+		[MenuItem( "CONTEXT/ScriptableObject/Paste Values From Bin (Inspect+)", validate = true )]
+		[MenuItem( "CONTEXT/Material/Paste Values From Bin (Inspect+)", validate = true )]
+#endif
 		private static bool ContextMenuItemPasteObjectFromBinValidate( MenuCommand command )
 		{
 			return ValidatePasteOperation( command );
+		}
+
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components...", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Multiple Components... (Inspect+)", validate = true )]
+#endif
+		private static bool ContextMenuItemPasteComponentGroupValidate( MenuCommand command )
+		{
+			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteComponentGroup( PreferablyGameObject( command.context ) as GameObject );
+		}
+
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components From Bin...", validate = true )]
+#else
+		[MenuItem( "CONTEXT/Component/Paste Multiple Components From Bin... (Inspect+)", validate = true )]
+#endif
+		private static bool ContextMenuItemPasteComponentGroupFromBinValidate( MenuCommand command )
+		{
+			return command.context;
 		}
 
 		private static bool ValidatePasteOperation( MenuCommand command )
@@ -272,7 +442,7 @@ namespace InspectPlusNamespace
 		#endregion
 
 		#region Complete GameObject Copy/Paste Buttons
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL, priority = 50 )]
+		[MenuItem( "GameObject/Inspect+/Copy/Complete GameObject (This Object Only)", priority = 50 )]
 		private static void MenuItemCopyCompleteGameObjectWithoutChildren( MenuCommand command )
 		{
 			// We are using EditorApplication.update to copy all selected GameObjects in one batch (else-clause)
@@ -285,7 +455,7 @@ namespace InspectPlusNamespace
 				CopyCompleteGameObject( false );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL, priority = 50 )]
+		[MenuItem( "GameObject/Inspect+/Copy/Complete GameObject (Include Children)", priority = 50 )]
 		private static void MenuItemCopyCompleteGameObjectWithChildren( MenuCommand command )
 		{
 			// We are using EditorApplication.update to copy all selected GameObjects in one batch (else-clause)
@@ -315,7 +485,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL, priority = 50 )]
+		[MenuItem( "GameObject/Inspect+/Paste/Complete GameObject", priority = 50 )]
 		private static void MenuItemPasteCompleteGameObject( MenuCommand command )
 		{
 			GameObject gameObject = PreferablyGameObject( command.context ) as GameObject;
@@ -323,7 +493,7 @@ namespace InspectPlusNamespace
 				PasteBinWindow.ActiveClipboard.PasteCompleteGameObject( gameObject, true );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL, priority = 50 )]
+		[MenuItem( "GameObject/Inspect+/Paste/Complete GameObject From Bin", priority = 50 )]
 		private static void MenuItemPasteCompleteGameObjectFromBin( MenuCommand command )
 		{
 			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
@@ -368,20 +538,20 @@ namespace InspectPlusNamespace
 			MenuItemPasteCompleteGameObjectFromBin( new MenuCommand( null ) );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITHOUT_CHILDREN_LABEL, validate = true )]
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_COPY_COMPLETE_GAMEOBJECT_WITH_CHILDREN_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/Copy/Complete GameObject (This Object Only)", validate = true )]
+		[MenuItem( "GameObject/Inspect+/Copy/Complete GameObject (Include Children)", validate = true )]
 		private static bool MenuItemCopyCompleteGameObjectValidate( MenuCommand command )
 		{
 			return Selection.GetFiltered<GameObject>( SelectionMode.TopLevel | SelectionMode.ExcludePrefab | SelectionMode.Editable ).Length > 0;
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/Paste/Complete GameObject", validate = true )]
 		private static bool MenuItemPasteCompleteGameObjectValidate( MenuCommand command )
 		{
 			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteCompleteGameObject( PreferablyGameObject( command.context ) as GameObject );
 		}
 
-		[MenuItem( "GameObject/Inspect+/" + CONTEXT_PASTE_COMPLETE_GAMEOBJECT_FROM_BIN_LABEL, validate = true )]
+		[MenuItem( "GameObject/Inspect+/Paste/Complete GameObject From Bin", validate = true )]
 		private static bool MenuItemPasteCompleteGameObjectFromBinValidate( MenuCommand command )
 		{
 			return !( command.context as GameObject ) || !AssetDatabase.Contains( command.context );
@@ -389,7 +559,7 @@ namespace InspectPlusNamespace
 		#endregion
 
 		#region Asset File Copy/Paste Buttons
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_ASSET_FILES_LABEL, priority = 1501 )]
+		[MenuItem( "Assets/Inspect+/Copy/Asset File(s)", priority = 1501 )]
 		private static void MenuItemCopyAssetFiles( MenuCommand command )
 		{
 			// We are using EditorApplication.update to copy all selected asset files in one batch (else-clause)
@@ -412,7 +582,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_LABEL, priority = 1501 )]
+		[MenuItem( "Assets/Inspect+/Paste/Asset File(s)", priority = 1501 )]
 		private static void MenuItemPasteAssetFiles( MenuCommand command )
 		{
 			// We are using EditorApplication.update to paste files to all target paths in one batch (else-clause)
@@ -429,7 +599,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_FROM_BIN_LABEL, priority = 1501 )]
+		[MenuItem( "Assets/Inspect+/Paste/Asset File(s) From Bin", priority = 1501 )]
 		private static void MenuItemPasteAssetFilesFromBin( MenuCommand command )
 		{
 			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
@@ -464,19 +634,19 @@ namespace InspectPlusNamespace
 			MenuItemPasteAssetFilesFromBin( new MenuCommand( null ) );
 		}
 
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_COPY_ASSET_FILES_LABEL, validate = true )]
+		[MenuItem( "Assets/Inspect+/Copy/Asset File(s)", validate = true )]
 		private static bool MenuItemCopyAssetFilesValidate( MenuCommand command )
 		{
 			return GetSelectedAssetPaths( false, true ).Length > 0;
 		}
 
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_LABEL, validate = true )]
+		[MenuItem( "Assets/Inspect+/Paste/Asset File(s)", validate = true )]
 		private static bool MenuItemPasteAssetFilesValidate( MenuCommand command )
 		{
 			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAssetFiles( GetSelectedAssetPaths( true, false ) );
 		}
 
-		[MenuItem( "Assets/Inspect+/" + CONTEXT_PASTE_ASSET_FILES_FROM_BIN_LABEL, validate = true )]
+		[MenuItem( "Assets/Inspect+/Paste/Asset File(s) From Bin", validate = true )]
 		private static bool MenuItemPasteAssetFilesFromBinValidate( MenuCommand command )
 		{
 			return GetSelectedAssetPaths( true, false ).Length > 0;
@@ -550,16 +720,16 @@ namespace InspectPlusNamespace
 			}
 
 			if( !property.hasMultipleDifferentValues && ( !isUnityObjectType || obj ) )
-				menu.AddItem( new GUIContent( CONTEXT_COPY_LABEL ), false, CopyValue, property.Copy() );
+				menu.AddItem( new GUIContent( "Copy (Inspect+)" ), false, CopyValue, property.Copy() );
 			else
-				menu.AddDisabledItem( new GUIContent( CONTEXT_COPY_LABEL ) );
+				menu.AddDisabledItem( new GUIContent( "Copy (Inspect+)" ) );
 
 			if( PasteBinWindow.ActiveClipboard == null || !property.CanPasteValue( PasteBinWindow.ActiveClipboard.RootValue, false ) )
-				menu.AddDisabledItem( new GUIContent( CONTEXT_PASTE_LABEL ) );
+				menu.AddDisabledItem( new GUIContent( "Paste (Inspect+)" ) );
 			else
-				menu.AddItem( new GUIContent( CONTEXT_PASTE_LABEL ), false, PasteValue, property.Copy() );
+				menu.AddItem( new GUIContent( "Paste (Inspect+)" ), false, PasteValue, property.Copy() );
 
-			menu.AddItem( new GUIContent( CONTEXT_PASTE_FROM_BIN_LABEL ), false, PasteValueFromBin, property.Copy() );
+			menu.AddItem( new GUIContent( "Paste From Bin (Inspect+)" ), false, PasteValueFromBin, property.Copy() );
 		}
 
 		public static void OnObjectRightClicked( GenericMenu menu, Object obj )
@@ -613,6 +783,11 @@ namespace InspectPlusNamespace
 			PasteFromBin( obj, PasteBinContextWindow.PasteType.CompleteGameObject );
 		}
 
+		private static void PasteComponentGroupFromBin( object obj )
+		{
+			PasteFromBin( obj, PasteBinContextWindow.PasteType.ComponentGroup );
+		}
+
 		private static void PasteAssetFilesFromBin( object obj )
 		{
 			string[] assetPaths = (string[]) obj;
@@ -629,15 +804,10 @@ namespace InspectPlusNamespace
 		{
 			if( obj is SerializedProperty || obj is Object[] )
 			{
-				PasteBinContextWindow window = ScriptableObject.CreateInstance<PasteBinContextWindow>();
 				if( obj is SerializedProperty )
-					window.Initialize( (SerializedProperty) obj );
+					ScriptableObject.CreateInstance<PasteBinContextWindow>().Initialize( (SerializedProperty) obj );
 				else
-					window.Initialize( (Object[]) obj, pasteType );
-
-				window.position = new Rect( new Vector2( -9999f, -9999f ), new Vector2( window.PreferredWidth, 9999f ) );
-				window.ShowPopup();
-				window.Focus();
+					ScriptableObject.CreateInstance<PasteBinContextWindow>().Initialize( (Object[]) obj, pasteType );
 			}
 			else
 				Debug.LogError( "Passed parameter is neither a SerializedProperty nor an Object." );

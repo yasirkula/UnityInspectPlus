@@ -7,9 +7,9 @@ namespace InspectPlusNamespace
 {
 	public class PasteBinContextWindow : EditorWindow
 	{
-		public enum PasteType { Normal = 0, ComponentAsNew = 1, CompleteGameObject = 2, AssetFiles = 3 };
+		public enum PasteType { Normal, ComponentAsNew, CompleteGameObject, ComponentGroup, AssetFiles };
 
-		private const string SMART_PASTE_TOOLTIP = "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C";
+		internal const string SMART_PASTE_TOOLTIP = "Imagine objects A and B having children named C. When Smart Paste is enabled and A is pasted to B, if A.someVariable points to A.C, B.someVariable will point to B.C instead of A.C";
 
 		private readonly GUIContent smartPasteOnButtonLabel = new GUIContent( "Smart Paste ON", SMART_PASTE_TOOLTIP );
 		private readonly GUIContent smartPasteOffButtonLabel = new GUIContent( "Smart Paste OFF", SMART_PASTE_TOOLTIP );
@@ -32,7 +32,7 @@ namespace InspectPlusNamespace
 
 		private Vector2 scrollPosition;
 
-		public float PreferredWidth
+		private float PreferredWidth
 		{
 			get
 			{
@@ -83,6 +83,8 @@ namespace InspectPlusNamespace
 					}
 				}
 			}
+
+			OnInitialize();
 		}
 
 		public void Initialize( Object[] objects, PasteType pasteType )
@@ -107,12 +109,22 @@ namespace InspectPlusNamespace
 
 						shouldShowSmartPasteButton = true; break;
 					case PasteType.CompleteGameObject: if( !clipboardRaw[i].CanPasteCompleteGameObject( (GameObject) objects[0] ) ) continue; break;
+					case PasteType.ComponentGroup: if( !clipboardRaw[i].CanPasteComponentGroup( (GameObject) objects[0] ) ) continue; break;
 					case PasteType.AssetFiles: if( !clipboardRaw[i].CanPasteAssetFiles( objects ) ) continue; break;
 				}
 
 				clipboard.Add( clipboardRaw[i] );
 				clipboardValues.Add( clipboardRaw[i].RootValue.GetClipboardObject( null ) );
 			}
+
+			OnInitialize();
+		}
+
+		private void OnInitialize()
+		{
+			position = new Rect( new Vector2( -9999f, -9999f ), new Vector2( PreferredWidth, 9999f ) );
+			ShowPopup();
+			Focus();
 		}
 
 		private void OnEnable()
@@ -292,6 +304,8 @@ namespace InspectPlusNamespace
 			{
 				if( pasteType == PasteType.AssetFiles )
 					clipboard[index].PasteAssetFiles( targetObjects );
+				else if( pasteType == PasteType.ComponentGroup )
+					CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( (SerializedClipboard.IPComponentGroup) clipboard[index].RootValue, targetObjects );
 				else
 				{
 					for( int j = 0; j < targetObjects.Length; j++ )

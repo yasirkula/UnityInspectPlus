@@ -13,6 +13,7 @@ using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.Array
 using VectorClipboard = InspectPlusNamespace.SerializablePropertyExtensions.VectorClipboard;
 using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ManagedObjectClipboard;
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
+using ComponentGroupClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ComponentGroupClipboard;
 using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
 #if UNITY_2018_3_OR_NEWER
 using PrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStage;
@@ -35,6 +36,7 @@ namespace InspectPlusNamespace
 			Long = 12, Double = 13, String = 14,
 			AnimationCurve = 15, Gradient = 16,
 			GameObjectHierarchy = 17,
+			ComponentGroup = 19,
 			AssetFiles = 18
 		};
 
@@ -1171,7 +1173,7 @@ namespace InspectPlusNamespace
 
 				GameObject[] result = new GameObject[GameObjects.Length];
 				List<GameObject> hierarchy = new List<GameObject>( GameObjects.Length * 32 );
-				List<IPGameObjectChild.ComponentToPaste[]> hierarchyComponents = new List<IPGameObjectChild.ComponentToPaste[]>( hierarchy.Capacity );
+				List<IPComponentGroup.ComponentToPaste[]> hierarchyComponents = new List<IPComponentGroup.ComponentToPaste[]>( hierarchy.Capacity );
 
 				// Recursively create child GameObjects (and their components). Creating all Components before pasting
 				// their values allows us to restore references between Components (since all the Components will
@@ -1193,7 +1195,7 @@ namespace InspectPlusNamespace
 
 					for( int i = 0; i < hierarchyComponents.Count; i++ )
 					{
-						IPGameObjectChild.ComponentToPaste[] componentsToPaste = hierarchyComponents[i];
+						IPComponentGroup.ComponentToPaste[] componentsToPaste = hierarchyComponents[i];
 						for( int j = 0; j < componentsToPaste.Length; j++ )
 							componentsToPaste[j].SerializedComponent.PasteToObject( componentsToPaste[j].TargetComponent, false );
 					}
@@ -1212,7 +1214,7 @@ namespace InspectPlusNamespace
 						// Setting object's lossy scale is far from trivial when object is skewed. No matter what I tried,
 						// I couldn't replicate Unity's world space copy-paste behaviour. The only way to exactly reproduce
 						// the same lossyScale values is to use Unity's SetParent(parent, true) function so that Unity handles
-						// the calculation of losstScale for us
+						// the calculation of lossyScale for us
 						dummyGO = new GameObject().transform;
 
 						for( int i = 0; i < result.Length; i++ )
@@ -1265,23 +1267,6 @@ namespace InspectPlusNamespace
 		public class IPGameObjectChild
 		{
 			[Serializable]
-			public struct ComponentInfo
-			{
-				public SerializedClipboard Component;
-				public bool Enabled;
-				public int HideFlags;
-				public int Index;
-
-				public ComponentInfo( SerializedClipboard component, bool enabled, int hideFlags, int index )
-				{
-					Component = component;
-					Enabled = enabled;
-					HideFlags = hideFlags;
-					Index = index;
-				}
-			}
-
-			[Serializable]
 			public struct RemovedComponentInfo
 			{
 				public IPType Type;
@@ -1291,18 +1276,6 @@ namespace InspectPlusNamespace
 				{
 					Type = type;
 					Index = index;
-				}
-			}
-
-			public struct ComponentToPaste
-			{
-				public readonly SerializedClipboard SerializedComponent;
-				public readonly Component TargetComponent;
-
-				public ComponentToPaste( SerializedClipboard serializedComponent, Component targetComponent )
-				{
-					SerializedComponent = serializedComponent;
-					TargetComponent = targetComponent;
 				}
 			}
 
@@ -1316,7 +1289,7 @@ namespace InspectPlusNamespace
 			public SerializedClipboard PrefabAsset;
 			public bool IsPartOfParentPrefab;
 
-			public ComponentInfo[] Components;
+			public IPComponentGroup.ComponentInfo[] Components;
 			public RemovedComponentInfo[] RemovedComponents;
 
 			public IPGameObjectChild[] Children;
@@ -1397,12 +1370,12 @@ namespace InspectPlusNamespace
 							RemovedComponents[i] = new RemovedComponentInfo( new IPType( root, _removedComponents[i].GetType() ), GetIndexOfComponentByType( _removedComponents[i], prefabComponents ) );
 					}
 
-					Components = new ComponentInfo[_components.Count];
+					Components = new IPComponentGroup.ComponentInfo[_components.Count];
 					for( int i = 0; i < _components.Count; i++ )
 					{
 						SerializedClipboard serializedComponent = new SerializedClipboard( _components[i], _components[i], null, null );
 						bool componentEnabled = EditorUtility.GetObjectEnabled( _components[i] ) != 0;
-						Components[i] = new ComponentInfo( serializedComponent, componentEnabled, (int) _components[i].hideFlags, GetIndexOfComponentByType( _components[i], _components ) );
+						Components[i] = new IPComponentGroup.ComponentInfo( serializedComponent, componentEnabled, (int) _components[i].hideFlags, GetIndexOfComponentByType( _components[i], _components ) );
 					}
 
 					// Store prefab asset (if it is a prefab instance's root GameObject)
@@ -1463,14 +1436,7 @@ namespace InspectPlusNamespace
 
 				writer.Write( IsPartOfParentPrefab );
 
-				writer.Write( Components.Length );
-				for( int i = 0; i < Components.Length; i++ )
-				{
-					Components[i].Component.Serialize( writer );
-					writer.Write( Components[i].Enabled );
-					writer.Write( Components[i].HideFlags );
-					writer.Write( Components[i].Index );
-				}
+				IPComponentGroup.SerializeComponents( writer, Components );
 
 				writer.Write( RemovedComponents.Length );
 				for( int i = 0; i < RemovedComponents.Length; i++ )
@@ -1506,14 +1472,7 @@ namespace InspectPlusNamespace
 
 				IsPartOfParentPrefab = reader.ReadBoolean();
 
-				Components = new ComponentInfo[reader.ReadInt32()];
-				for( int i = 0; i < Components.Length; i++ )
-				{
-					SerializedClipboard component = new SerializedClipboard( reader );
-					bool enabled = reader.ReadBoolean();
-					int hideFlags = reader.ReadInt32();
-					Components[i] = new ComponentInfo( component, enabled, hideFlags, reader.ReadInt32() );
-				}
+				Components = IPComponentGroup.DeserializeComponents( reader );
 
 				RemovedComponents = new RemovedComponentInfo[reader.ReadInt32()];
 				for( int i = 0; i < RemovedComponents.Length; i++ )
@@ -1535,7 +1494,7 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			public void CreateGameObjectsRecursively( Transform parent, ref GameObject gameObject, List<GameObject> hierarchy, List<ComponentToPaste[]> hierarchyComponents )
+			public void CreateGameObjectsRecursively( Transform parent, ref GameObject gameObject, List<GameObject> hierarchy, List<IPComponentGroup.ComponentToPaste[]> hierarchyComponents )
 			{
 				bool isPrefabInstance = gameObject;
 				if( !isPrefabInstance )
@@ -1568,15 +1527,6 @@ namespace InspectPlusNamespace
 				gameObject.hideFlags = (HideFlags) HideFlags;
 				GameObjectUtility.SetStaticEditorFlags( gameObject, (StaticEditorFlags) StaticFlags );
 
-				// Find the serialized components that exist in this Unity project
-				List<ComponentInfo> validComponents = new List<ComponentInfo>( Components.Length );
-				for( int i = 0; i < Components.Length; i++ )
-				{
-					IPType objectType = Components[i].Component.RootUnityObjectType;
-					if( objectType != null && objectType.Type != null && typeof( Component ).IsAssignableFrom( objectType.Type ) )
-						validComponents.Add( Components[i] );
-				}
-
 				// Destroy removed components (if any)
 				if( RemovedComponents.Length > 0 )
 				{
@@ -1598,56 +1548,8 @@ namespace InspectPlusNamespace
 						Undo.DestroyObjectImmediate( componentsToRemove[i] );
 				}
 
-				// Add any necessary components to the GameObject (but don't paste their values yet; creating all Components before pasting their
-				// values allows us to restore references between Components since all the Components will exist while pasting the Component values)
-				ComponentToPaste[] componentsToPaste = new ComponentToPaste[validComponents.Count];
-				for( int i = 0; i < validComponents.Count; i++ )
-				{
-					// We are calling GetComponents at each iteration because a component added in the previous iteration might automatically
-					// add other component(s) to the GameObject (i.e. via RequireComponent)
-					Type componentType = validComponents[i].Component.RootUnityObjectType.Type;
-					Component[] components = gameObject.GetComponents( componentType );
-
-					int componentIndex;
-					Component targetComponent = FindComponentOfTypeClosestToIndex( componentType, components, validComponents[i].Index, out componentIndex );
-
-					for( ; componentIndex < validComponents[i].Index; componentIndex++ )
-						targetComponent = Undo.AddComponent( gameObject, componentType );
-
-					// In the following edge case, Undo.AddComponent may return null:
-					// GameObject has 2 components: Image and SomeComponent. In project A, SomeComponent doesn't have any dependencies.
-					// In project B, SomeComponent's implementation differs from project A such that SomeComponent now has a
-					// RequireComponent(Text) attribute. When pasting the GameObject to project B, Unity will complain at Undo.AddComponent:
-					// "Can't add 'Text' to object because a 'Image' is already added to the game object!"
-					// That's because in this project, trying to add SomeComponent to the GameObject will force Unity to add a Text component
-					// to the same GameObject but it will fail because only 1 Graphic component can exist on an object and that is the Image
-					// component in this case. Hence, Undo.AddComponent will set targetComponent to null
-					if( !targetComponent )
-					{
-						Array.Resize( ref componentsToPaste, componentsToPaste.Length - 1 );
-						validComponents.RemoveAt( i-- );
-
-						continue;
-					}
-
-					// We can paste the values of enabled and hideFlags immediately, though
-					targetComponent.hideFlags = (HideFlags) validComponents[i].HideFlags;
-
-					// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/61f92bd79ae862c4465d35270f9d1d57befd1761/Editor/Mono/EditorGUI.cs#L5092-L5164
-					SerializedProperty enabledProperty = new SerializedObject( targetComponent ).FindProperty( "m_Enabled" );
-					if( enabledProperty != null && enabledProperty.propertyType == SerializedPropertyType.Boolean )
-					{
-						enabledProperty.boolValue = validComponents[i].Enabled;
-						enabledProperty.serializedObject.ApplyModifiedProperties();
-					}
-					else if( EditorUtility.GetObjectEnabled( targetComponent ) != -1 )
-						EditorUtility.SetObjectEnabled( targetComponent, validComponents[i].Enabled );
-
-					componentsToPaste[i] = new ComponentToPaste( validComponents[i].Component, targetComponent );
-				}
-
 				hierarchy.Add( gameObject );
-				hierarchyComponents.Add( componentsToPaste );
+				hierarchyComponents.Add( IPComponentGroup.AddComponentsToGameObject( Components, gameObject, false ) );
 
 				// Recursively create child GameObjects (and their components)
 				if( Children != null )
@@ -1706,6 +1608,240 @@ namespace InspectPlusNamespace
 					for( int i = 0; i < Children.Length; i++ )
 						Children[i].PrintHierarchyRecursively( sb, depth + 1 );
 				}
+			}
+		}
+
+		public class IPComponentGroup : IPObject
+		{
+			[Serializable]
+			public struct ComponentInfo
+			{
+				public SerializedClipboard Component;
+				public bool Enabled;
+				public int HideFlags;
+				public int Index;
+
+				public ComponentInfo( SerializedClipboard component, bool enabled, int hideFlags, int index )
+				{
+					Component = component;
+					Enabled = enabled;
+					HideFlags = hideFlags;
+					Index = index;
+				}
+			}
+
+			public struct ComponentToPaste
+			{
+				public readonly SerializedClipboard SerializedComponent;
+				public readonly Component TargetComponent;
+
+				public ComponentToPaste( SerializedClipboard serializedComponent, Component targetComponent )
+				{
+					SerializedComponent = serializedComponent;
+					TargetComponent = targetComponent;
+				}
+			}
+
+			public ComponentInfo[] Components;
+
+			public IPComponentGroup( SerializedClipboard root ) : base( root ) { }
+			public IPComponentGroup( SerializedClipboard root, string name, ComponentGroupClipboard value ) : base( root, name )
+			{
+				List<Component> _components = new List<Component>( value.components );
+				for( int i = _components.Count - 1; i >= 0; i-- )
+				{
+					if( !_components[i] )
+					{
+						_components.RemoveAt( i );
+						continue;
+					}
+				}
+
+				Components = new ComponentInfo[_components.Count];
+				for( int i = 0; i < _components.Count; i++ )
+				{
+					SerializedClipboard serializedComponent = new SerializedClipboard( _components[i], _components[i], null, _components[i].GetType().Name );
+					bool componentEnabled = EditorUtility.GetObjectEnabled( _components[i] ) != 0;
+					Components[i] = new ComponentInfo( serializedComponent, componentEnabled, (int) _components[i].hideFlags, GetIndexOfComponentByType( _components[i], _components ) );
+				}
+			}
+
+			public override object GetClipboardObject( Object context )
+			{
+				return new ComponentGroupClipboard( Name );
+			}
+
+			public override void Serialize( BinaryWriter writer )
+			{
+				base.Serialize( writer );
+				SerializeComponents( writer, Components );
+			}
+
+			public override void Deserialize( BinaryReader reader )
+			{
+				base.Deserialize( reader );
+				Components = DeserializeComponents( reader );
+			}
+
+			public static void SerializeComponents( BinaryWriter writer, ComponentInfo[] array )
+			{
+				writer.Write( array.Length );
+				for( int i = 0; i < array.Length; i++ )
+				{
+					array[i].Component.Serialize( writer );
+					writer.Write( array[i].Enabled );
+					writer.Write( array[i].HideFlags );
+					writer.Write( array[i].Index );
+				}
+			}
+
+			public static ComponentInfo[] DeserializeComponents( BinaryReader reader )
+			{
+				ComponentInfo[] result = new ComponentInfo[reader.ReadInt32()];
+				for( int i = 0; i < result.Length; i++ )
+				{
+					SerializedClipboard component = new SerializedClipboard( reader );
+					bool enabled = reader.ReadBoolean();
+					int hideFlags = reader.ReadInt32();
+					result[i] = new ComponentInfo( component, enabled, hideFlags, reader.ReadInt32() );
+				}
+
+				return result;
+			}
+
+			public Component[] PasteComponents( GameObject target, ComponentInfo[] filteredComponents = null )
+			{
+				if( !target || AssetDatabase.Contains( target ) )
+				{
+					Debug.LogError( "Can't paste ComponentGroup to a non-existing GameObject, prefab or model Asset: " + target, target );
+					return new Component[0];
+				}
+
+				// Create the components first
+				ComponentToPaste[] componentsToPaste = AddComponentsToGameObject( filteredComponents ?? Components, target, true );
+
+				// Paste component values
+				Component[] result = new Component[componentsToPaste.Length];
+				for( int i = 0; i < componentsToPaste.Length; i++ )
+				{
+					componentsToPaste[i].SerializedComponent.PasteToObject( componentsToPaste[i].TargetComponent, false );
+					result[i] = componentsToPaste[i].TargetComponent;
+				}
+
+				return result;
+			}
+
+			// ignoreExistingComponents=false: Don't hesitate to paste serialized ComponentInfos to existing components
+			// ignoreExistingComponents=true: Try to create new components for each ComponentInfo. However, if it fails when e.g. trying to
+			//								  create Rigidbody when one already exists, use the existing component as fallback
+			public static ComponentToPaste[] AddComponentsToGameObject( ComponentInfo[] components, GameObject gameObject, bool ignoreExistingComponents )
+			{
+				HashSet<Component> existingComponents = ignoreExistingComponents ? new HashSet<Component>( gameObject.GetComponents<Component>() ) : null;
+
+				// Find the serialized components that exist in this Unity project
+				List<ComponentInfo> validComponents = SelectComponentsThatExistInProject( components );
+
+				// Add any necessary components to the GameObject (but don't paste their values yet; creating all Components before pasting their
+				// values allows us to restore references between Components since all the Components will exist while pasting the Component values)
+				ComponentToPaste[] result = new ComponentToPaste[validComponents.Count];
+				for( int i = 0; i < validComponents.Count; i++ )
+				{
+					// We are calling GetComponents at each iteration because a component added in the previous iteration might automatically
+					// add other component(s) to the GameObject (i.e. via RequireComponent)
+					Type componentType = validComponents[i].Component.RootUnityObjectType.Type;
+					Component[] _components = gameObject.GetComponents( componentType );
+
+					Component targetComponent = null;
+					if( ignoreExistingComponents ) // Create a new component if possible
+					{
+						// First, check if one of these existing components was added automatically via RequireComponent; in which case, use it
+						for( int j = _components.Length - 1; j >= 0; j-- )
+						{
+							if( _components[j] && _components[j].GetType() == componentType && !existingComponents.Contains( _components[j] ) )
+							{
+								targetComponent = _components[j];
+								break;
+							}
+						}
+
+						// All existing components were part of the original GameObject, add a new component
+						if( !targetComponent && componentType != typeof( Transform ) )
+							targetComponent = Undo.AddComponent( gameObject, componentType );
+
+						// Don't paste to this component twice
+						if( targetComponent )
+							existingComponents.Add( targetComponent );
+					}
+
+					if( !targetComponent )
+					{
+						// Try to find the component among the list of existing components
+						int componentIndex;
+						targetComponent = FindComponentOfTypeClosestToIndex( componentType, _components, validComponents[i].Index, out componentIndex );
+
+						// We already call Undo.AddComponent when ignoreExistingComponents=true in the above lines
+						if( !ignoreExistingComponents )
+						{
+							// Add new components until the serialized component's Index is reached
+							for( ; componentIndex < validComponents[i].Index; componentIndex++ )
+								targetComponent = Undo.AddComponent( gameObject, componentType );
+						}
+					}
+
+					// In the following edge case, Undo.AddComponent may return null:
+					// GameObject has 2 components: Image and SomeComponent. In project A, SomeComponent doesn't have any dependencies.
+					// In project B, SomeComponent's implementation differs from project A such that SomeComponent now has a
+					// RequireComponent(Text) attribute. When pasting the GameObject to project B, Unity will complain at Undo.AddComponent:
+					// "Can't add 'Text' to object because a 'Image' is already added to the game object!"
+					// That's because in this project, trying to add SomeComponent to the GameObject will force Unity to add a Text component
+					// to the same GameObject but it will fail because only 1 Graphic component can exist on an object and that is the Image
+					// component in this case. Hence, Undo.AddComponent will set targetComponent to null
+					if( !targetComponent )
+					{
+						Array.Resize( ref result, result.Length - 1 );
+						validComponents.RemoveAt( i-- );
+
+						continue;
+					}
+
+					// We can paste the values of enabled and hideFlags immediately, though
+					Undo.RecordObject( targetComponent, "Modify Component" );
+					targetComponent.hideFlags = (HideFlags) validComponents[i].HideFlags;
+
+					// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/61f92bd79ae862c4465d35270f9d1d57befd1761/Editor/Mono/EditorGUI.cs#L5092-L5164
+					SerializedProperty enabledProperty = new SerializedObject( targetComponent ).FindProperty( "m_Enabled" );
+					if( enabledProperty != null && enabledProperty.propertyType == SerializedPropertyType.Boolean )
+					{
+						enabledProperty.boolValue = validComponents[i].Enabled;
+						enabledProperty.serializedObject.ApplyModifiedProperties();
+					}
+					else if( EditorUtility.GetObjectEnabled( targetComponent ) != -1 )
+						EditorUtility.SetObjectEnabled( targetComponent, validComponents[i].Enabled );
+
+					result[i] = new ComponentToPaste( validComponents[i].Component, targetComponent );
+				}
+
+				return result;
+			}
+
+			// Returns the serialized components that exist in this Unity project (i.e. can be pasted to this Unity project)
+			public static List<ComponentInfo> SelectComponentsThatExistInProject( ComponentInfo[] allComponents )
+			{
+				List<ComponentInfo> result = new List<ComponentInfo>( allComponents.Length );
+				for( int i = 0; i < allComponents.Length; i++ )
+				{
+					IPType objectType = allComponents[i].Component.RootUnityObjectType;
+					if( objectType != null && objectType.Type != null && !objectType.Type.IsAbstract && typeof( Component ).IsAssignableFrom( objectType.Type ) )
+						result.Add( allComponents[i] );
+				}
+
+				return result;
+			}
+
+			public void PrintComponents( StringBuilder sb )
+			{
+				for( int i = 0; i < Components.Length; i++ )
+					sb.AppendLine( Components[i].Component.RootUnityObjectType.Name );
 			}
 		}
 
@@ -2082,6 +2218,7 @@ namespace InspectPlusNamespace
 			{ typeof( IPSceneObject ), IPObjectType.SceneObject },
 			{ typeof( IPSceneObjectReference ), IPObjectType.SceneObjectReference },
 			{ typeof( IPGameObjectHierarchy ), IPObjectType.GameObjectHierarchy },
+			{ typeof( IPComponentGroup ), IPObjectType.ComponentGroup },
 			{ typeof( IPAssetFiles ), IPObjectType.AssetFiles },
 			{ typeof( IPManagedObject ), IPObjectType.ManagedObject },
 			{ typeof( IPManagedReference ), IPObjectType.ManagedReference },
@@ -2099,6 +2236,7 @@ namespace InspectPlusNamespace
 		private static readonly Dictionary<Type, IPObjectType> typeToEnumLookup = new Dictionary<Type, IPObjectType>()
 		{
 			{ typeof( GameObjectHierarchyClipboard ), IPObjectType.GameObjectHierarchy },
+			{ typeof( ComponentGroupClipboard ), IPObjectType.ComponentGroup },
 			{ typeof( AssetFilesClipboard ), IPObjectType.AssetFiles },
 			{ typeof( ManagedObjectClipboard ), IPObjectType.ManagedObject },
 			{ typeof( ArrayClipboard ), IPObjectType.Array },
@@ -2148,7 +2286,7 @@ namespace InspectPlusNamespace
 		// When the SerializedClipboard is created from a SerializedProperty, its root value's Name won't be empty
 		public bool HasSerializedPropertyOrigin { get { return !string.IsNullOrEmpty( RootValue.Name ); } }
 
-		public bool HasTooltip { get { return Values.Length > 1 || RootValue is IPGameObjectHierarchy || RootValue is IPAssetFiles; } }
+		public bool HasTooltip { get { return Values.Length > 1 || RootValue is IPGameObjectHierarchy || RootValue is IPComponentGroup || RootValue is IPAssetFiles; } }
 
 		public string Label;
 		private GUIContent m_labelContent;
@@ -2167,6 +2305,16 @@ namespace InspectPlusNamespace
 
 						sb.Append( "Complete GameObject Hierarchy:\n\n" );
 						( (IPGameObjectHierarchy) RootValue ).PrintHierarchy( sb );
+
+						m_labelContent = new GUIContent( Label, sb.ToString() );
+					}
+					else if( RootValue is IPComponentGroup )
+					{
+						StringBuilder sb = Utilities.stringBuilder;
+						sb.Length = 0;
+
+						sb.Append( "Multiple Components:\n\n" );
+						( (IPComponentGroup) RootValue ).PrintComponents( sb );
 
 						m_labelContent = new GUIContent( Label, sb.ToString() );
 					}
@@ -2408,6 +2556,7 @@ namespace InspectPlusNamespace
 				case IPObjectType.Array: return new IPArray( this, name, (ArrayClipboard) obj, source );
 				case IPObjectType.GenericObject: return new IPGenericObject( this, name, (GenericObjectClipboard) obj, source );
 				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this, name, (GameObjectHierarchyClipboard) obj );
+				case IPObjectType.ComponentGroup: return new IPComponentGroup( this, name, (ComponentGroupClipboard) obj );
 				case IPObjectType.AssetFiles: return new IPAssetFiles( this, name, (AssetFilesClipboard) obj );
 				case IPObjectType.Vector: return new IPVector( this, name, (VectorClipboard) obj );
 				case IPObjectType.Color: return new IPColor( this, name, (Color) obj );
@@ -2447,6 +2596,7 @@ namespace InspectPlusNamespace
 				case IPObjectType.SceneObject: return new IPSceneObject( this );
 				case IPObjectType.SceneObjectReference: return new IPSceneObjectReference( this );
 				case IPObjectType.GameObjectHierarchy: return new IPGameObjectHierarchy( this );
+				case IPObjectType.ComponentGroup: return new IPComponentGroup( this );
 				case IPObjectType.AssetFiles: return new IPAssetFiles( this );
 				case IPObjectType.ManagedObject: return new IPManagedObject( this );
 				case IPObjectType.ManagedReference: return new IPManagedReference( this );
@@ -2513,6 +2663,14 @@ namespace InspectPlusNamespace
 				return false;
 
 			return !parent || !AssetDatabase.Contains( parent );
+		}
+
+		public bool CanPasteComponentGroup( GameObject target )
+		{
+			if( !( RootValue is IPComponentGroup ) )
+				return false;
+
+			return target && !AssetDatabase.Contains( target );
 		}
 
 		public bool CanPasteAssetFiles( Object[] parentFolders )
@@ -2595,8 +2753,6 @@ namespace InspectPlusNamespace
 			Component newComponent = Undo.AddComponent( gameObject, objectType.Type );
 			if( newComponent )
 				PasteToObject( newComponent, false );
-			else
-				Debug.LogError( string.Concat( "Couldn't add a ", objectType.Type.FullName, " Component to ", gameObject.name ) );
 
 			return newComponent;
 		}
@@ -2606,6 +2762,11 @@ namespace InspectPlusNamespace
 			GameObject[] result = ( (IPGameObjectHierarchy) RootValue ).PasteHierarchy( parent ? parent.transform : null, preserveWorldSpacePosition );
 			Selection.objects = result;
 			return result;
+		}
+
+		public Component[] PasteComponentGroup( GameObject target, IPComponentGroup.ComponentInfo[] filteredComponents = null )
+		{
+			return ( (IPComponentGroup) RootValue ).PasteComponents( target, filteredComponents );
 		}
 
 		public string[] PasteAssetFiles( Object[] parentFolders, bool logPastedFiles = true )

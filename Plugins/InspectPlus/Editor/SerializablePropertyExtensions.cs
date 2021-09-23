@@ -6,7 +6,6 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using IPObject = InspectPlusNamespace.SerializedClipboard.IPObject;
-using IPGameObjectHierarchy = InspectPlusNamespace.SerializedClipboard.IPGameObjectHierarchy;
 
 namespace InspectPlusNamespace
 {
@@ -30,6 +29,24 @@ namespace InspectPlusNamespace
 			{
 				this.source = null;
 				this.includeChildren = true;
+				this.name = name;
+			}
+		}
+
+		public class ComponentGroupClipboard
+		{
+			public readonly Component[] components;
+			public readonly string name;
+
+			public ComponentGroupClipboard( Component[] components )
+			{
+				this.components = components;
+				this.name = components[0].name;
+			}
+
+			public ComponentGroupClipboard( string name )
+			{
+				this.components = null;
 				this.name = name;
 			}
 		}

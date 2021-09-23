@@ -22,6 +22,7 @@ There are 4 ways to install this plugin:
   - right clicking an *Object* variable in the Inspector
   - right clicking a component in the Inspector
   - selecting **Window/Inspect+/New Window** menu item
+  - calling the `InspectPlusNamespace.InspectPlusWindow.Inspect` functions from your editor scripts
 
 ![screenshot](Images/InspectPlusWindow.png)
 
@@ -32,10 +33,14 @@ There are 4 ways to install this plugin:
 ![screenshot](Images/FavoritesList.png)
 
 - You can right click variables or components in the Inspector to copy&paste their values. This supports all variable types: primitives, scene objects, assets, managed references, arrays, serializable objects and etc. Paste operation is quite flexible, as well; you can paste different vector types to each other and paste any component to another with no type restrictions, as long as these components have some variables with the same name. Note that copy/paste menu won't show up for variables that are not drawn with *SerializedProperty*
-- You can right click an object in Hierarchy and copy its complete hierarchy (with or without its children). Then, you can paste these objects to another Unity project's hierarchy; Unity versions don't need to match (however, assets that don't exist on the other project will become missing references)
 
 ![screenshot](Images/CopyProperties.png)
 
+- You can right click a component and copy multiple components attached to that GameObject at once. Then, you can right click another component and paste multiple components at once
+
+![screenshot](Images/CopyMultipleComponents.gif)
+
+- You can right click an object in Hierarchy and copy its complete hierarchy (with or without its children). Then, you can paste these objects to another Unity project's hierarchy; Unity versions don't need to match (however, assets that don't exist on the other project will become missing references)
 - You can right click the Inspect+ tab to enable **Debug mode**: you can inspect all variables of an object in this mode, including static, readonly and non-serializable variables
 
 ![screenshot](Images/DebugMode.png)
@@ -55,5 +60,3 @@ There are 4 ways to install this plugin:
 - You can open Object Diff Window via **Window/Inspect+/Diff Window**: this window lets you see the differences between two objects in your project (diff of two GameObjects won't include their child GameObjects)
 
 ![screenshot](Images/DiffWindow.png)
-
-- You can show the Inspect+ window from your editor scripts by calling the `InspectPlusNamespace.InspectPlusWindow.Inspect` functions

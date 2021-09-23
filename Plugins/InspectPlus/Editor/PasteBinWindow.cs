@@ -12,6 +12,7 @@ using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.Array
 using GenericObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GenericObjectClipboard;
 using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ManagedObjectClipboard;
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
+using ComponentGroupClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ComponentGroupClipboard;
 using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
 
 namespace InspectPlusNamespace
@@ -343,6 +344,8 @@ namespace InspectPlusNamespace
 				EditorGUILayout.TextField( GUIContent.none, ( (ManagedObjectClipboard) clipboardValue ).type + " object (SerializeField)" );
 			else if( clipboardValue is GameObjectHierarchyClipboard )
 				EditorGUILayout.TextField( GUIContent.none, ( (GameObjectHierarchyClipboard) clipboardValue ).name + " (Complete GameObject)" );
+			else if( clipboardValue is ComponentGroupClipboard )
+				EditorGUILayout.TextField( GUIContent.none, ( (ComponentGroupClipboard) clipboardValue ).name + " (Multiple Components)" );
 			else if( clipboardValue is AssetFilesClipboard )
 				EditorGUILayout.TextField( GUIContent.none, ( (AssetFilesClipboard) clipboardValue ).paths[0] + " (Asset File)" );
 			else
@@ -371,7 +374,7 @@ namespace InspectPlusNamespace
 			AddToClipboard( obj, null, label, context );
 		}
 
-		private static void AddToClipboard( object obj, string propertyName, string label, Object context )
+		public static void AddToClipboard( object obj, string propertyName, string label, Object context )
 		{
 			if( obj == null || obj.Equals( null ) )
 				return;
