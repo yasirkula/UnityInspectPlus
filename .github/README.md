@@ -2,6 +2,8 @@
 
 This plugin helps you view an object's Inspector in a separate tab/window, copy&paste the values of variables in the Inspector, inspect all variables of an object (including non-serializable and static variables) in an enhanced Debug mode and more.
 
+**Discord:** https://discord.gg/UJJt549AaV
+
 **[Support the Developer ☕](https://yasirkula.itch.io/unity3d)**
 
 ## INSTALLATION
