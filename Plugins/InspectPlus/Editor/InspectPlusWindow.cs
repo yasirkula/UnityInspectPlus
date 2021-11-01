@@ -429,6 +429,28 @@ namespace InspectPlusNamespace
 		#region Context Menu Buttons
 		void IHasCustomMenu.AddItemsToMenu( GenericMenu menu )
 		{
+			for( int i = 0; i < windows.Count; i++ )
+			{
+				InspectPlusWindow window = windows[i];
+				if( window && window != this )
+				{
+					if( window.projectWindowBoundInspector == this )
+					{
+						menu.AddDisabledItem( new GUIContent( "This window is bound to the Isolated Folder: '" + window.titleContent.text + "'", window.titleContent.image ) );
+						menu.AddSeparator( "" );
+
+						break;
+					}
+					else if( window.hierarchyWindowBoundInspector == this )
+					{
+						menu.AddDisabledItem( new GUIContent( "This window is bound to the Isolated Hierarchy: '" + window.titleContent.text + "'", window.titleContent.image ) );
+						menu.AddSeparator( "" );
+
+						break;
+					}
+				}
+			}
+
 			if( !InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
 			{
 				menu.AddItem( new GUIContent( "Show Favorites" ), showFavorites, () => showFavorites = !showFavorites );

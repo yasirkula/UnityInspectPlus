@@ -6,6 +6,7 @@ E-mail: yasirkula@gmail.com
 1. ABOUT
 This plugin helps you view an object's Inspector in a separate tab/window, copy&paste the values of variables in the Inspector, inspect all variables of an object (including non-serializable and static variables) in an enhanced Debug mode and more.
 
+
 2. HOW TO
 - You can open the Inspect+ window in a number of ways: 
   1) right clicking an object in Project or Hierarchy windows

@@ -844,16 +844,10 @@ namespace InspectPlusNamespace
 				return t1.GetSiblingIndex() - t2.GetSiblingIndex();
 
 			int deltaHierarchyDepth = 0;
-			while( parent1 )
-			{
+			for( ; parent1; parent1 = parent1.parent )
 				deltaHierarchyDepth++;
-				parent1 = parent1.parent;
-			}
-			while( parent2 )
-			{
+			for( ; parent2; parent2 = parent2.parent )
 				deltaHierarchyDepth--;
-				parent2 = parent2.parent;
-			}
 
 			for( ; deltaHierarchyDepth > 0; deltaHierarchyDepth-- )
 			{
