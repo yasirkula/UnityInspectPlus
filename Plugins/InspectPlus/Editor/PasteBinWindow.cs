@@ -7,6 +7,8 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
+using SceneObjectReference = InspectPlusNamespace.SerializedClipboard.IPSceneObjectReference;
+using AssetReference = InspectPlusNamespace.SerializedClipboard.IPAssetReference;
 using VectorClipboard = InspectPlusNamespace.SerializablePropertyExtensions.VectorClipboard;
 using ArrayClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ArrayClipboard;
 using GenericObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GenericObjectClipboard;
@@ -315,7 +317,7 @@ namespace InspectPlusNamespace
 
 			EditorGUI.indentLevel++;
 
-			if( clipboardValue == null || clipboardValue.Equals( null ) || clipboardValue is Object )
+			if( clipboardValue as Object )
 				EditorGUILayout.ObjectField( GUIContent.none, clipboardValue as Object, typeof( Object ), true );
 			else if( clipboardValue is long )
 				EditorGUILayout.TextField( GUIContent.none, ( (long) clipboardValue ).ToString() );
@@ -348,6 +350,10 @@ namespace InspectPlusNamespace
 				EditorGUILayout.TextField( GUIContent.none, ( (ComponentGroupClipboard) clipboardValue ).name + " (Multiple Components)" );
 			else if( clipboardValue is AssetFilesClipboard )
 				EditorGUILayout.TextField( GUIContent.none, ( (AssetFilesClipboard) clipboardValue ).paths[0] + " (Asset File)" );
+			else if( clipboard.RootValue is SceneObjectReference )
+				EditorGUILayout.TextField( GUIContent.none, clipboard.RootUnityObjectType.Name + " object (Scene Object)" );
+			else if( clipboard.RootValue is AssetReference )
+				EditorGUILayout.TextField( GUIContent.none, clipboard.RootUnityObjectType.Name + " object (Asset)" );
 			else
 				EditorGUILayout.TextField( GUIContent.none, clipboard.RootValue.GetType().Name + " object" );
 
