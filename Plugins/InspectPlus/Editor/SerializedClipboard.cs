@@ -156,6 +156,7 @@ namespace InspectPlusNamespace
 								}
 								catch( NotSupportedException ) { }
 								catch( FileNotFoundException ) { }
+								catch( ReflectionTypeLoadException ) { }
 								catch( Exception e )
 								{
 									Debug.LogError( "Couldn't search assembly for type: " + assembly.GetName().Name + "\n" + e.ToString() );
@@ -185,6 +186,7 @@ namespace InspectPlusNamespace
 								}
 								catch( NotSupportedException ) { }
 								catch( FileNotFoundException ) { }
+								catch( ReflectionTypeLoadException ) { }
 								catch( Exception e )
 								{
 									Debug.LogError( "Couldn't search assembly for type: " + assembly.GetName().Name + "\n" + e.ToString() );
