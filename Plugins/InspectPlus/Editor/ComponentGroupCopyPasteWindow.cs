@@ -88,7 +88,7 @@ namespace InspectPlusNamespace
 
 		private void OnEnable()
 		{
-			wantsMouseMove = true;
+			wantsMouseMove = wantsMouseEnterLeaveWindow = true;
 #if UNITY_2020_1_OR_NEWER
 			wantsLessLayoutEvents = false;
 #endif
@@ -263,6 +263,8 @@ namespace InspectPlusNamespace
 			}
 			else if( ev.type == EventType.MouseUp )
 				prevMousePos = null;
+			else if( ev.type == EventType.MouseLeaveWindow )
+				PasteBinTooltip.Hide();
 		}
 
 		private void OnHoveredComponentChanged( int hoveredComponentIndex )

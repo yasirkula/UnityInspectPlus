@@ -56,10 +56,12 @@ namespace InspectPlusNamespace
 			}
 
 			PasteBinTooltip.tooltip = tooltip;
+			mainWindow.minSize = preferredPosition.size;
 			mainWindow.position = preferredPosition;
 			mainWindow.Repaint();
 
-			prevFocusedWindow.Focus();
+			if( prevFocusedWindow )
+				prevFocusedWindow.Focus();
 		}
 
 		public static void Hide()
@@ -73,6 +75,13 @@ namespace InspectPlusNamespace
 
 		private void OnGUI()
 		{
+			// If somehow the tooltip isn't automatically closed, allow closing it by clicking on it
+			if( Event.current.type == EventType.MouseDown )
+			{
+				Hide();
+				GUIUtility.ExitGUI();
+			}
+
 			GUI.Label( new Rect( Vector2.zero, position.size ), tooltip, Style );
 		}
 	}
