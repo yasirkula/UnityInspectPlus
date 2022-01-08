@@ -144,6 +144,7 @@ namespace InspectPlusNamespace
 				PasteBinWindow.AddToClipboard( Selection.activeObject, Utilities.GetDetailedObjectName( Selection.activeObject ), Selection.activeObject );
 		}
 
+		[MenuItem( "GameObject/Inspect+/Copy/Multiple Components...", priority = 50 )]
 #if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Multiple Components...", priority = 1500 )]
 #else
@@ -160,9 +161,17 @@ namespace InspectPlusNamespace
 				EditorApplication.update -= CallCopyMultipleComponentsOnce;
 				EditorApplication.update += CallCopyMultipleComponentsOnce;
 			}
-			else if( objectsToOpenPasteBinWith != null )
+			else
 			{
-				ScriptableObject.CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( ( (Component) objectsToOpenPasteBinWith[0] ).GetComponents<Component>() );
+				Component[] components = null;
+				if( objectsToOpenPasteBinWith != null )
+					components = ( (Component) objectsToOpenPasteBinWith[0] ).GetComponents<Component>();
+				else if( Selection.activeTransform )
+					components = Selection.activeTransform.GetComponents<Component>();
+
+				if( components != null && components.Length > 0 )
+					ScriptableObject.CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( components );
+
 				objectsToOpenPasteBinWith = null;
 			}
 		}
@@ -269,6 +278,7 @@ namespace InspectPlusNamespace
 			ContextMenuItemPasteObjectFromBin( new MenuCommand( null ) );
 		}
 
+		[MenuItem( "GameObject/Inspect+/Paste/Multiple Components...", priority = 50 )]
 #if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components...", priority = 1500 )]
 #else
@@ -291,10 +301,14 @@ namespace InspectPlusNamespace
 					EditorApplication.update += CallPasteComponentGroupOnce;
 				}
 			}
-			else if( objectsToOpenPasteBinWith != null )
+			else
 			{
 				if( PasteBinWindow.ActiveClipboard != null )
-					ScriptableObject.CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( (SerializedClipboard.IPComponentGroup) PasteBinWindow.ActiveClipboard.RootValue, objectsToOpenPasteBinWith.ToArray() );
+				{
+					Object[] selectedGameObjects = ( objectsToOpenPasteBinWith != null ) ? objectsToOpenPasteBinWith.ToArray() : Selection.GetFiltered<GameObject>( SelectionMode.Editable | SelectionMode.ExcludePrefab );
+					if( selectedGameObjects != null && selectedGameObjects.Length > 0 )
+						ScriptableObject.CreateInstance<ComponentGroupCopyPasteWindow>().Initialize( (SerializedClipboard.IPComponentGroup) PasteBinWindow.ActiveClipboard.RootValue, selectedGameObjects );
+				}
 
 				objectsToOpenPasteBinWith = null;
 			}
@@ -306,6 +320,7 @@ namespace InspectPlusNamespace
 			MenuItemPasteComponentGroup( new MenuCommand( null ) );
 		}
 
+		[MenuItem( "GameObject/Inspect+/Paste/Multiple Components From Bin...", priority = 50 )]
 #if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components From Bin...", priority = 1500 )]
 #else
@@ -328,9 +343,12 @@ namespace InspectPlusNamespace
 					EditorApplication.update += CallPasteComponentGroupFromBinOnce;
 				}
 			}
-			else if( objectsToOpenPasteBinWith != null )
+			else
 			{
-				PasteComponentGroupFromBin( objectsToOpenPasteBinWith.ToArray() );
+				Object[] selectedGameObjects = ( objectsToOpenPasteBinWith != null ) ? objectsToOpenPasteBinWith.ToArray() : Selection.GetFiltered<GameObject>( SelectionMode.Editable | SelectionMode.ExcludePrefab );
+				if( selectedGameObjects != null && selectedGameObjects.Length > 0 )
+					PasteComponentGroupFromBin( selectedGameObjects );
+
 				objectsToOpenPasteBinWith = null;
 			}
 		}
@@ -348,12 +366,18 @@ namespace InspectPlusNamespace
 			return Selection.activeObject;
 		}
 
+		[MenuItem( "GameObject/Inspect+/Copy/Multiple Components...", validate = true )]
+		private static bool ContextMenuItemCopyComponentGroupValidate( MenuCommand command )
+		{
+			return Selection.activeTransform;
+		}
+
 #if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Multiple Components...", validate = true )]
 #else
 		[MenuItem( "CONTEXT/Component/Copy Multiple Components... (Inspect+)", validate = true )]
 #endif
-		private static bool ContextMenuItemCopyComponentGroupValidate( MenuCommand command )
+		private static bool ContextMenuItemCopyComponentGroupValidate2( MenuCommand command )
 		{
 			return command.context;
 		}
@@ -406,14 +430,26 @@ namespace InspectPlusNamespace
 			return ValidatePasteOperation( command );
 		}
 
+		[MenuItem( "GameObject/Inspect+/Paste/Multiple Components...", validate = true )]
+		private static bool ContextMenuItemPasteComponentGroupValidate( MenuCommand command )
+		{
+			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteComponentGroup( Selection.activeGameObject );
+		}
+
 #if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components...", validate = true )]
 #else
 		[MenuItem( "CONTEXT/Component/Paste Multiple Components... (Inspect+)", validate = true )]
 #endif
-		private static bool ContextMenuItemPasteComponentGroupValidate( MenuCommand command )
+		private static bool ContextMenuItemPasteComponentGroupValidate2( MenuCommand command )
 		{
 			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteComponentGroup( PreferablyGameObject( command.context ) as GameObject );
+		}
+
+		[MenuItem( "GameObject/Inspect+/Paste/Multiple Components From Bin...", validate = true )]
+		private static bool ContextMenuItemPasteComponentGroupFromBinValidate( MenuCommand command )
+		{
+			return Selection.activeGameObject;
 		}
 
 #if UNITY_2019_4_OR_NEWER
@@ -421,7 +457,7 @@ namespace InspectPlusNamespace
 #else
 		[MenuItem( "CONTEXT/Component/Paste Multiple Components From Bin... (Inspect+)", validate = true )]
 #endif
-		private static bool ContextMenuItemPasteComponentGroupFromBinValidate( MenuCommand command )
+		private static bool ContextMenuItemPasteComponentGroupFromBinValidate2( MenuCommand command )
 		{
 			return command.context;
 		}
