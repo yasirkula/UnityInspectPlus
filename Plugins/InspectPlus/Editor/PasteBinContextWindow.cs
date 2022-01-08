@@ -316,7 +316,7 @@ namespace InspectPlusNamespace
 						{
 							case PasteType.Normal: clipboard[index].PasteToObject( targetObjects[j] ); break;
 							case PasteType.ComponentAsNew: clipboard[index].PasteAsNewComponent( (Component) targetObjects[j] ); break;
-							case PasteType.CompleteGameObject: clipboard[index].PasteCompleteGameObject( (GameObject) targetObjects[j], Event.current == null || ( !Event.current.control && !Event.current.shift ) ); break; // Don't preserve objects' world space positions if CTRL or Shift key are held
+							case PasteType.CompleteGameObject: clipboard[index].PasteCompleteGameObject( (GameObject) targetObjects[j], Event.current == null || ( !Event.current.control && !Event.current.command && !Event.current.shift ) ); break; // Don't preserve objects' world space positions if CTRL or Shift key are held
 						}
 					}
 				}
