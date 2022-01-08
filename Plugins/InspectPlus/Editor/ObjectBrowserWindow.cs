@@ -10,7 +10,7 @@ namespace InspectPlusNamespace
 		{
 			public int Compare( Object x, Object y )
 			{
-				return x.name.CompareTo( y.name );
+				return EditorUtility.NaturalCompare( x.name, y.name );
 			}
 		}
 
