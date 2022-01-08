@@ -6,7 +6,7 @@ namespace InspectPlusNamespace
 {
 	public class ObjectBrowserWindow : EditorWindow
 	{
-		private class NameComparer : IComparer<Object>
+		public class NameComparer : IComparer<Object>
 		{
 			public int Compare( Object x, Object y )
 			{
@@ -14,7 +14,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private class TypeComparer : IComparer<Object>
+		public class TypeComparer : IComparer<Object>
 		{
 			public int Compare( Object x, Object y )
 			{
@@ -53,7 +53,7 @@ namespace InspectPlusNamespace
 					return result;
 
 				// 4. Compare object names
-				return x.name.CompareTo( y.name );
+				return EditorUtility.NaturalCompare( x.name, y.name );
 			}
 		}
 

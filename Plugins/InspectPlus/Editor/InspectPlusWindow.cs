@@ -166,6 +166,18 @@ namespace InspectPlusNamespace
 			PasteBinWindow.Show();
 		}
 
+		[MenuItem( "Window/Inspect+/Basket (Active Window)" )]
+		private static void ShowActiveBasketWindow()
+		{
+			BasketWindow.Show( false );
+		}
+
+		[MenuItem( "Window/Inspect+/Basket (New Window)" )]
+		private static void ShowNewBasketWindow()
+		{
+			BasketWindow.Show( true );
+		}
+
 		[MenuItem( "Window/Inspect+/Diff Window" )]
 		private static void ShowObjectDiffWindow()
 		{

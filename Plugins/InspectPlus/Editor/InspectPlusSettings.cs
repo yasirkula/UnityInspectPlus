@@ -80,6 +80,8 @@ namespace InspectPlusNamespace
 		public bool SyncProjectWindowSelection = true;
 		[Tooltip( "While inspecting an object's Isolated Hierarchy, selecting child objects inside that hierarchy will update Unity's selection, as well" )]
 		public bool SyncIsolatedHierarchyWindowSelection = true;
+		[Tooltip( "Selecting objects in Basket window will update Unity's selection, as well" )]
+		public bool SyncBasketSelection = true;
 
 		[Space]
 		[Tooltip( "Selecting an object in Favorites or History will highlight the object in Hierarchy/Project" )]

@@ -59,6 +59,10 @@ There are 4 ways to install this plugin:
 
 ![screenshot](Images/PasteFromBin.png)
 
+- You can open Basket via **Window/Inspect+/Basket**: this window temporarily stores the objects that you drag&drop inside it (once the window is closed, its contents will be lost)
+
+![screenshot](Images/Basket.png)
+
 - You can open Object Diff Window via **Window/Inspect+/Diff Window**: this window lets you see the differences between two objects in your project (diff of two GameObjects won't include their child GameObjects)
 
 ![screenshot](Images/DiffWindow.png)
