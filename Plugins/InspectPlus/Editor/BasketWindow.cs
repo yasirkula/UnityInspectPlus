@@ -80,6 +80,15 @@ namespace InspectPlusNamespace
 
 			treeView.OnGUI( GUILayoutUtility.GetRect( 0f, 100000f, 0f, 100000f ) );
 
+			// This happens only when the mouse click is not captured by the TreeView. In this case, clear its selection
+			if( Event.current.type == EventType.MouseDown && Event.current.button == 0 )
+			{
+				treeView.SetSelection( new int[0] );
+
+				Event.current.Use();
+				Repaint();
+			}
+
 			if( titleObjectCount != treeViewState.objects.Count )
 			{
 				titleObjectCount = treeViewState.objects.Count;
