@@ -179,6 +179,8 @@ namespace InspectPlusNamespace
 				{
 					componentGUIContent.text = ObjectNames.GetInspectorTitle( targetComponents[i] );
 					componentGUIContent.image = AssetPreview.GetMiniThumbnail( targetComponents[i] );
+					if( !componentGUIContent.image )
+						componentGUIContent.image = EditorGUIUtility.IconContent( "cs Script Icon" ).image;
 
 					componentSelectedStates[i] = EditorGUILayout.ToggleLeft( componentGUIContent, componentSelectedStates[i] );
 				}
@@ -209,6 +211,8 @@ namespace InspectPlusNamespace
 					{
 						componentGUIContent.text = targetSerializedComponents[i].Component.RootUnityObjectType.Name;
 						componentGUIContent.image = AssetPreview.GetMiniTypeThumbnail( targetSerializedComponents[i].Component.RootUnityObjectType.Type );
+						if( !componentGUIContent.image )
+							componentGUIContent.image = EditorGUIUtility.IconContent( "cs Script Icon" ).image;
 
 						componentSelectedStates[i] = EditorGUILayout.ToggleLeft( componentGUIContent, componentSelectedStates[i] );
 
