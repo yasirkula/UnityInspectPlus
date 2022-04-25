@@ -100,6 +100,9 @@ namespace InspectPlusNamespace
 				currType = currType.BaseType;
 			}
 
+			validVariables.Sort();
+			int validVariablesPrevCount = validVariables.Count;
+
 			currType = type;
 			while( currType != typeof( object ) )
 			{
@@ -156,6 +159,9 @@ namespace InspectPlusNamespace
 				currType = currType.BaseType;
 			}
 
+			validVariables.Sort( validVariablesPrevCount, validVariables.Count - validVariablesPrevCount, null );
+			validVariablesPrevCount = validVariables.Count;
+
 			currType = type;
 			while( currType != typeof( object ) )
 			{
@@ -197,6 +203,8 @@ namespace InspectPlusNamespace
 
 				currType = currType.BaseType;
 			}
+
+			validVariables.Sort( validVariablesPrevCount, validVariables.Count - validVariablesPrevCount, null );
 
 			result = validVariables.ToArray();
 

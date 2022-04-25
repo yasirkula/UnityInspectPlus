@@ -8,14 +8,16 @@ namespace InspectPlusNamespace
 	public delegate object VariableGetVal( object obj );
 
 	// Custom struct to hold a variable's description and its getter function
-	public struct VariableGetterHolder
+	public struct VariableGetterHolder : IComparable<VariableGetterHolder>
 	{
 		public readonly string description;
+		private readonly string name;
 		private readonly VariableGetVal getter;
 
 		public VariableGetterHolder( string description, VariableGetVal getter )
 		{
 			this.description = description;
+			this.name = description;
 			this.getter = getter;
 		}
 
@@ -45,6 +47,7 @@ namespace InspectPlusNamespace
 			sb.Append( fieldInfo.Name );
 
 			this.description = sb.ToString();
+			this.name = fieldInfo.Name;
 			this.getter = getter;
 		}
 
@@ -75,6 +78,7 @@ namespace InspectPlusNamespace
 			sb.Append( propertyInfo.Name );
 
 			this.description = sb.ToString();
+			this.name = propertyInfo.Name;
 			this.getter = getter;
 		}
 
@@ -104,6 +108,7 @@ namespace InspectPlusNamespace
 			sb.Append( methodInfo.Name );
 
 			this.description = sb.ToString();
+			this.name = methodInfo.Name;
 			this.getter = getter;
 		}
 
@@ -138,6 +143,11 @@ namespace InspectPlusNamespace
 		public object Get( object obj )
 		{
 			return getter( obj );
+		}
+
+		int IComparable<VariableGetterHolder>.CompareTo( VariableGetterHolder other )
+		{
+			return name.CompareTo( other.name );
 		}
 	}
 
