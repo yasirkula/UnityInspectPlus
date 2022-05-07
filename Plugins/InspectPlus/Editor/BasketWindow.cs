@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
@@ -8,6 +9,10 @@ namespace InspectPlusNamespace
 {
 	public class BasketWindow : EditorWindow, IHasCustomMenu
 	{
+		private const string SAVE_FILE_EXTENSION = "basket";
+		private const string SAVE_DIRECTORY = "Library/BasketWindows";
+		private const string LAST_WINDOW_SAVE_FILE = SAVE_DIRECTORY + "/_ActiveWindow." + SAVE_FILE_EXTENSION;
+
 #pragma warning disable 0649
 		private BasketWindowDrawer treeView;
 		[SerializeField]
@@ -16,7 +21,8 @@ namespace InspectPlusNamespace
 #pragma warning restore 0649
 
 		private bool shouldRepositionSelf;
-		private int titleObjectCount = -1;
+		private bool hasContentsBeenModified;
+		private int titleObjectCount = 0;
 
 		public static new void Show( bool newInstance )
 		{
@@ -26,15 +32,45 @@ namespace InspectPlusNamespace
 
 			if( newInstance )
 				window.shouldRepositionSelf = true;
+			else if( window.treeViewState.objects.Count == 0 && File.Exists( LAST_WINDOW_SAVE_FILE ) )
+				window.LoadData( LAST_WINDOW_SAVE_FILE );
 
 			window.Show();
 		}
 
 		void IHasCustomMenu.AddItemsToMenu( GenericMenu menu )
 		{
+			if( treeView == null )
+				return;
+
+			if( treeViewState.objects.Count > 0 )
+			{
+				menu.AddItem( new GUIContent( "Save..." ), false, () =>
+				{
+					Directory.CreateDirectory( SAVE_DIRECTORY );
+
+					string savePath = EditorUtility.SaveFilePanel( "Save As", SAVE_DIRECTORY, "", SAVE_FILE_EXTENSION );
+					if( !string.IsNullOrEmpty( savePath ) )
+						SaveData( savePath );
+				} );
+			}
+			else
+				menu.AddDisabledItem( new GUIContent( "Save..." ) );
+
+			menu.AddItem( new GUIContent( "Load..." ), false, () =>
+			{
+				Directory.CreateDirectory( SAVE_DIRECTORY );
+
+				string loadPath = EditorUtility.OpenFilePanel( "Load", SAVE_DIRECTORY, SAVE_FILE_EXTENSION );
+				if( !string.IsNullOrEmpty( loadPath ) )
+					LoadData( loadPath );
+			} );
+
+			menu.AddSeparator( "" );
+
 			menu.AddItem( new GUIContent( "Synchronize Selection With Unity" ), treeViewState.syncSelection, () => treeViewState.syncSelection = !treeViewState.syncSelection );
 
-			if( treeView != null && treeViewState.objects.Count > 0 )
+			if( treeViewState.objects.Count > 0 )
 			{
 				menu.AddSeparator( "" );
 
@@ -52,6 +88,20 @@ namespace InspectPlusNamespace
 			}
 		}
 
+		private void SaveData( string path )
+		{
+			File.WriteAllText( path, EditorJsonUtility.ToJson( treeViewState, true ) );
+		}
+
+		private void LoadData( string path )
+		{
+			EditorJsonUtility.FromJsonOverwrite( File.ReadAllText( path ), treeViewState );
+			treeViewState.objects.RemoveAll( ( obj ) => !obj );
+
+			if( treeView != null )
+				treeView.Reload();
+		}
+
 		private void Awake()
 		{
 			treeViewState.syncSelection = InspectPlusSettings.Instance.SyncBasketSelection;
@@ -60,6 +110,15 @@ namespace InspectPlusNamespace
 		private void OnEnable()
 		{
 			treeViewState.objects.RemoveAll( ( obj ) => !obj );
+		}
+
+		private void OnDestroy()
+		{
+			if( hasContentsBeenModified )
+			{
+				Directory.CreateDirectory( SAVE_DIRECTORY );
+				SaveData( LAST_WINDOW_SAVE_FILE );
+			}
 		}
 
 		private void OnGUI()
@@ -93,6 +152,7 @@ namespace InspectPlusNamespace
 			{
 				titleObjectCount = treeViewState.objects.Count;
 				titleContent = new GUIContent( "Basket (" + titleObjectCount + ")" );
+				hasContentsBeenModified = true;
 			}
 
 			if( shouldRepositionSelf )

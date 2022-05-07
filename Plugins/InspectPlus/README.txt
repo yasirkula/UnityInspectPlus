@@ -24,5 +24,5 @@ This plugin helps you view an object's Inspector in a separate tab/window, copy&
 - You can right click an object in Hierarchy and select the "Isolated Hierarchy" option to open a Hierarchy window that displays only that object's children
 - You can open a folder with Inspect+ to see its contents in an isolated Project view
 - You can open Paste Bin via "Window/Inspect+/Paste Bin": this window lists the copied variables and is shared between all Unity projects (so, copying a value in Project A will make that value available in Project B). You can also right click variables, components or materials in the Inspector and select "Paste Values From Bin" to quickly select and paste a value from Paste Bin
-- You can open Basket via "Window/Inspect+/Basket": this window temporarily stores the objects that you drag&drop inside it (once the window is closed, its contents will be lost)
+- You can open Basket via "Window/Inspect+/Basket": this window stores the objects that you drag&drop inside it (unfortunately, once the window is closed, its scene object contents will be lost). You can right click the window's tab to save its contents to a file
 - You can open Object Diff Window via "Window/Inspect+/Diff Window": this window lets you see the differences between two objects in your project (diff of two GameObjects won't include their child GameObjects)
