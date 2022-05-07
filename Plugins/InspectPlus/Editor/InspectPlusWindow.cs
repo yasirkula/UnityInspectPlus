@@ -1188,7 +1188,7 @@ namespace InspectPlusNamespace
 				GUILayout.Box( "(F)ield, (P)roperty, (M)ethod, (S)tatic, (O)bsolete\n(+)Public, (#)Protected/Internal, (-)Private", expandWidth );
 
 				for( int i = 0; i < debugModeDrawerCount; i++ )
-					debugModeDrawers[i].DrawOnGUI();
+					debugModeDrawers[i].DrawOnGUI( debugModeDrawerCount == 1 );
 			}
 			else
 			{

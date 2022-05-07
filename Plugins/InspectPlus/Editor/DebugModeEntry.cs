@@ -85,11 +85,14 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		public void DrawOnGUI()
+		public void DrawOnGUI( bool flattenChildren = false )
 		{
+			if( flattenChildren && !IsExpanded )
+				IsExpanded = true;
+
 			if( m_isExpanded )
 			{
-				if( !EditorGUILayout.Foldout( true, Getter.description, true ) )
+				if( !flattenChildren && !EditorGUILayout.Foldout( true, Variable.description, true ) )
 				{
 					IsExpanded = false;
 					GUIUtility.ExitGUI();
