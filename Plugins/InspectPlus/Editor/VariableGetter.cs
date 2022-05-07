@@ -10,6 +10,25 @@ namespace InspectPlusNamespace
 	// Custom struct to hold a variable's description and its getter function
 	public struct VariableGetterHolder : IComparable<VariableGetterHolder>
 	{
+		private static readonly Dictionary<Type, string> typeNamesLookup = new Dictionary<Type, string>
+		{
+			{ typeof(bool), "bool" },
+			{ typeof(byte), "byte" },
+			{ typeof(char), "char" },
+			{ typeof(decimal), "decimal" },
+			{ typeof(double), "double" },
+			{ typeof(float), "float" },
+			{ typeof(int), "int" },
+			{ typeof(long), "long" },
+			{ typeof(object), "object" },
+			{ typeof(sbyte), "sbyte" },
+			{ typeof(short), "short" },
+			{ typeof(string), "string" },
+			{ typeof(uint), "uint" },
+			{ typeof(ulong), "ulong" },
+			{ typeof(void), "void" }
+		};
+
 		public readonly string description;
 		private readonly string name;
 		private readonly VariableGetVal getter;
@@ -114,7 +133,10 @@ namespace InspectPlusNamespace
 
 		private static void AppendTypeToDescription( StringBuilder sb, Type type )
 		{
-			string name = type.Name;
+			string name;
+			if( !typeNamesLookup.TryGetValue( type, out name ) )
+				name = type.Name;
+
 			if( !type.IsGenericType )
 				sb.Append( name );
 			else
