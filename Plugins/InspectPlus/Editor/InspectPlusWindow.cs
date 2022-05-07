@@ -362,6 +362,7 @@ namespace InspectPlusNamespace
 		private void OnUndoRedo()
 		{
 			shouldRepaint = true;
+			debugModeRefreshTime = 0f;
 
 			// Inspected object was deleted but now this deletion is undo'ed
 			if( inspectorDrawerCount == 0 && mainObject )
