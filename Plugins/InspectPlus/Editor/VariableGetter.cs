@@ -1,11 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 
 namespace InspectPlusNamespace
 {
-	// Delegate to get the value of a variable (either field or property)
+	// Delegates to get/set the value of a variable (field, property or method)
 	public delegate object VariableGetVal( object obj );
+	public delegate void VariableSetVal( object obj, object value );
 
 	// Custom struct to hold a variable's description and its getter function
 	public struct VariableGetterHolder : IComparable<VariableGetterHolder>
@@ -30,19 +32,23 @@ namespace InspectPlusNamespace
 		};
 
 		public readonly string description;
+		public readonly Type type;
 		private readonly string name;
 		private readonly VariableGetVal getter;
+		private readonly VariableSetVal setter;
 
-		public VariableGetterHolder( string description, VariableGetVal getter )
+		public VariableGetterHolder( string description, Type type, VariableGetVal getter, VariableSetVal setter )
 		{
 			this.description = description;
+			this.type = type;
 			this.name = description;
 			this.getter = getter;
+			this.setter = setter;
 		}
 
-		public VariableGetterHolder( FieldInfo fieldInfo, VariableGetVal getter )
+		public VariableGetterHolder( FieldInfo fieldInfo, VariableGetVal getter, VariableSetVal setter )
 		{
-			Type type = fieldInfo.FieldType;
+			type = fieldInfo.FieldType;
 
 			StringBuilder sb = Utilities.stringBuilder;
 			sb.Length = 0;
@@ -66,17 +72,18 @@ namespace InspectPlusNamespace
 			this.description = sb.ToString();
 			this.name = fieldInfo.Name;
 			this.getter = getter;
+			this.setter = setter;
 		}
 
-		public VariableGetterHolder( PropertyInfo propertyInfo, VariableGetVal getter )
+		public VariableGetterHolder( PropertyInfo propertyInfo, VariableGetVal getter, VariableSetVal setter )
 		{
-			Type type = propertyInfo.PropertyType;
-			MethodInfo getMethod = propertyInfo.GetGetMethod( true );
+			type = propertyInfo.PropertyType;
 
 			StringBuilder sb = Utilities.stringBuilder;
 			sb.Length = 0;
 			sb.Append( "(P" );
 
+			MethodInfo getMethod = propertyInfo.GetGetMethod( true );
 			if( getMethod.IsPublic )
 				sb.Append( "+)" );
 			else if( getMethod.IsFamily || getMethod.IsAssembly )
@@ -95,11 +102,12 @@ namespace InspectPlusNamespace
 			this.description = sb.ToString();
 			this.name = propertyInfo.Name;
 			this.getter = getter;
+			this.setter = setter;
 		}
 
 		public VariableGetterHolder( MethodInfo methodInfo, VariableGetVal getter )
 		{
-			Type type = methodInfo.ReturnType;
+			type = methodInfo.ReturnType;
 
 			StringBuilder sb = Utilities.stringBuilder;
 			sb.Length = 0;
@@ -123,6 +131,7 @@ namespace InspectPlusNamespace
 			this.description = sb.ToString();
 			this.name = methodInfo.Name;
 			this.getter = getter;
+			this.setter = null;
 		}
 
 		private static void AppendTypeToDescription( StringBuilder sb, Type type )
@@ -165,6 +174,12 @@ namespace InspectPlusNamespace
 			return getter( obj );
 		}
 
+		public void Set( object obj, object value )
+		{
+			if( setter != null )
+				setter( obj, value );
+		}
+
 		int IComparable<VariableGetterHolder>.CompareTo( VariableGetterHolder other )
 		{
 			return name.CompareTo( other.name );
@@ -172,19 +187,23 @@ namespace InspectPlusNamespace
 	}
 
 	// Credit: http://stackoverflow.com/questions/724143/how-do-i-create-a-delegate-for-a-net-property
-	public interface IPropertyAccessor
+	public interface IPropertyWrapper
 	{
 		object GetValue( object source );
+		void SetValue( object source, object value );
 	}
 
-	// A wrapper class for properties to get their values more efficiently
-	public class PropertyWrapper<TObject, TValue> : IPropertyAccessor where TObject : class
+	// A wrapper class for properties to get/set their values more efficiently
+	public class PropertyWrapper<TObject, TValue> : IPropertyWrapper where TObject : class
 	{
 		private readonly Func<TObject, TValue> getter;
+		private readonly Action<TObject, TValue> setter;
 
-		public PropertyWrapper( MethodInfo getterMethod )
+		public PropertyWrapper( MethodInfo getterMethod, MethodInfo setterMethod )
 		{
 			getter = (Func<TObject, TValue>) Delegate.CreateDelegate( typeof( Func<TObject, TValue> ), getterMethod );
+			if( setterMethod != null )
+				setter = (Action<TObject, TValue>) Delegate.CreateDelegate( typeof( Action<TObject, TValue> ), setterMethod );
 		}
 
 		public object GetValue( object obj )
@@ -200,16 +219,25 @@ namespace InspectPlusNamespace
 				return null;
 			}
 		}
+
+		public void SetValue( object obj, object value )
+		{
+			if( setter != null )
+				setter( (TObject) obj, (TValue) value );
+		}
 	}
 
 	// PropertyWrapper for static properties
-	public class PropertyWrapper<TValue> : IPropertyAccessor
+	public class PropertyWrapper<TValue> : IPropertyWrapper
 	{
 		private readonly Func<TValue> getter;
+		private readonly Action<TValue> setter;
 
-		public PropertyWrapper( MethodInfo getterMethod )
+		public PropertyWrapper( MethodInfo getterMethod, MethodInfo setterMethod )
 		{
 			getter = (Func<TValue>) Delegate.CreateDelegate( typeof( Func<TValue> ), getterMethod );
+			if( setterMethod != null )
+				setter = (Action<TValue>) Delegate.CreateDelegate( typeof( Action<TValue> ), setterMethod );
 		}
 
 		public object GetValue( object obj )
@@ -222,6 +250,12 @@ namespace InspectPlusNamespace
 			{
 				return null;
 			}
+		}
+
+		public void SetValue( object obj, object value )
+		{
+			if( setter != null )
+				setter( (TValue) value );
 		}
 	}
 

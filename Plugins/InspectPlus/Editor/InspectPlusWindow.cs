@@ -1963,13 +1963,13 @@ namespace InspectPlusNamespace
 			else
 				name = obj.name;
 
-			VariableGetterHolder variableGetter = new VariableGetterHolder( name, new ConstantValueGetter( obj ).GetValue );
+			VariableGetterHolder variableGetter = new VariableGetterHolder( name, obj.GetType(), new ConstantValueGetter( obj ).GetValue, null );
 
 			if( debugModeDrawerCount < debugModeDrawers.Count )
-				debugModeDrawers[debugModeDrawerCount++].Getter = variableGetter;
+				debugModeDrawers[debugModeDrawerCount++].Variable = variableGetter;
 			else
 			{
-				debugModeDrawers.Add( new DebugModeEntry( null ) { Getter = variableGetter } );
+				debugModeDrawers.Add( new DebugModeEntry( null ) { Variable = variableGetter } );
 				debugModeDrawerCount++;
 			}
 		}

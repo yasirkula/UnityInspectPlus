@@ -92,9 +92,11 @@ namespace InspectPlusNamespace
 					if( variableType.IsPointer || variableType.IsByRef )
 						continue;
 
-					VariableGetVal getter = field.CreateGetter();
+					VariableGetVal getter;
+					VariableSetVal setter;
+					field.CreateGetterAndSetter( out getter, out setter );
 					if( getter != null )
-						validVariables.Add( new VariableGetterHolder( field, getter ) );
+						validVariables.Add( new VariableGetterHolder( field, getter, setter ) );
 				}
 
 				currType = currType.BaseType;
@@ -150,9 +152,11 @@ namespace InspectPlusNamespace
 						continue;
 					else
 					{
-						VariableGetVal getter = property.CreateGetter();
+						VariableGetVal getter;
+						VariableSetVal setter;
+						property.CreateGetterAndSetter( out getter, out setter );
 						if( getter != null )
-							validVariables.Add( new VariableGetterHolder( property, getter ) );
+							validVariables.Add( new VariableGetterHolder( property, getter, setter ) );
 					}
 				}
 
@@ -220,29 +224,36 @@ namespace InspectPlusNamespace
 			return type.IsPrimitive || primitiveUnityTypes.Contains( type ) || type.IsEnum;
 		}
 
-		// Get <get> function for a field
-		private static VariableGetVal CreateGetter( this FieldInfo fieldInfo )
+		// Get <get> and <set> functions for a field
+		private static void CreateGetterAndSetter( this FieldInfo fieldInfo, out VariableGetVal getter, out VariableSetVal setter )
 		{
-			return fieldInfo.GetValue;
+			getter = fieldInfo.GetValue;
+			setter = ( !fieldInfo.IsInitOnly && !fieldInfo.IsLiteral ) ? fieldInfo.SetValue : (VariableSetVal) null;
 		}
 
-		// Get <get> function for a property
-		private static VariableGetVal CreateGetter( this PropertyInfo propertyInfo )
+		// Get <get> and <set> functions for a property
+		private static void CreateGetterAndSetter( this PropertyInfo propertyInfo, out VariableGetVal getter, out VariableSetVal setter )
 		{
 			// Can't use PropertyWrapper (which uses CreateDelegate) for property getters of structs
 			if( propertyInfo.DeclaringType.IsValueType )
-				return propertyInfo.CanRead ? ( ( obj ) => propertyInfo.GetValue( obj, null ) ) : (VariableGetVal) null;
-
-			MethodInfo getMethod = propertyInfo.GetGetMethod( true );
-			if( !getMethod.IsStatic )
 			{
-				Type GenType = typeof( PropertyWrapper<,> ).MakeGenericType( propertyInfo.DeclaringType, propertyInfo.PropertyType );
-				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, getMethod ) ).GetValue;
+				getter = propertyInfo.CanRead ? ( ( obj ) => propertyInfo.GetValue( obj, null ) ) : (VariableGetVal) null;
+				setter = propertyInfo.CanWrite ? ( ( obj, value ) => propertyInfo.SetValue( obj, value, null ) ) : (VariableSetVal) null;
 			}
 			else
 			{
-				Type GenType = typeof( PropertyWrapper<> ).MakeGenericType( propertyInfo.PropertyType );
-				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, getMethod ) ).GetValue;
+				MethodInfo getMethod = propertyInfo.GetGetMethod( true );
+				MethodInfo setMethod = propertyInfo.GetSetMethod( true );
+
+				Type propertyWrapperType;
+				if( !getMethod.IsStatic )
+					propertyWrapperType = typeof( PropertyWrapper<,> ).MakeGenericType( propertyInfo.DeclaringType, propertyInfo.PropertyType );
+				else
+					propertyWrapperType = typeof( PropertyWrapper<> ).MakeGenericType( propertyInfo.PropertyType );
+
+				IPropertyWrapper propertyWrapper = (IPropertyWrapper) Activator.CreateInstance( propertyWrapperType, getMethod, setMethod );
+				getter = propertyWrapper.GetValue;
+				setter = propertyWrapper.SetValue;
 			}
 		}
 
@@ -256,12 +267,12 @@ namespace InspectPlusNamespace
 			if( !methodInfo.IsStatic )
 			{
 				Type GenType = typeof( PropertyWrapper<,> ).MakeGenericType( methodInfo.DeclaringType, methodInfo.ReturnType );
-				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, methodInfo ) ).GetValue;
+				return ( (IPropertyWrapper) Activator.CreateInstance( GenType, methodInfo, null ) ).GetValue;
 			}
 			else
 			{
 				Type GenType = typeof( PropertyWrapper<> ).MakeGenericType( methodInfo.ReturnType );
-				return ( (IPropertyAccessor) Activator.CreateInstance( GenType, methodInfo ) ).GetValue;
+				return ( (IPropertyWrapper) Activator.CreateInstance( GenType, methodInfo, null ) ).GetValue;
 			}
 		}
 

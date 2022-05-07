@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -26,7 +27,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		public VariableGetterHolder Getter;
+		public VariableGetterHolder Variable;
 		public object Obj;
 		protected DebugModeEntry parent;
 		protected string primitiveValue;
@@ -46,7 +47,7 @@ namespace InspectPlusNamespace
 			if( m_isExpanded )
 			{
 				Type prevType = Obj != null ? Obj.GetType() : null;
-				Obj = Getter.Get( parent != null ? parent.Obj : null );
+				Obj = Variable.Get( parent != null ? parent.Obj : null );
 
 				if( Obj == null || Obj.Equals( null ) )
 					PoolLists();
@@ -61,7 +62,7 @@ namespace InspectPlusNamespace
 					if( Obj is IEnumerable && !( Obj is Transform ) )
 					{
 						if( enumerableRoot == null )
-							enumerableRoot = new DebugModeEnumerableEntry( this ) { Getter = new VariableGetterHolder( "(IEnumerable) Elements", null ) };
+							enumerableRoot = new DebugModeEnumerableEntry( this ) { Variable = new VariableGetterHolder( "(IEnumerable) Elements", Obj.GetType(), null, null ) };
 
 						enumerableRoot.Refresh();
 					}
@@ -76,7 +77,7 @@ namespace InspectPlusNamespace
 						VariableGetterHolder[] childGetters = Utilities.GetFilteredVariablesForType( Obj.GetType() );
 						variables = PopList( childGetters.Length );
 						for( int i = 0; i < childGetters.Length; i++ )
-							variables.Add( new DebugModeEntry( this ) { Getter = childGetters[i] } );
+							variables.Add( new DebugModeEntry( this ) { Variable = childGetters[i] } );
 					}
 
 					for( int i = 0; i < variables.Count; i++ )
@@ -99,56 +100,145 @@ namespace InspectPlusNamespace
 				}
 				else
 				{
-					if( Obj == null || Obj.Equals( null ) )
-						EditorGUILayout.LabelField( "Null" );
-					else if( primitiveValue != null ) // Variable is primitive
-						EditorGUILayout.LabelField( primitiveValue );
-					else
+					if( !flattenChildren )
+						EditorGUI.indentLevel++;
+
+					if( parent == null || !DrawValueOnGUI() )
 					{
-						if( Obj is Object && parent != null ) // We want to expose the variables of root entries
+						if( enumerableRoot != null )
+							enumerableRoot.DrawOnGUI();
+
+						if( variables != null )
 						{
-							EditorGUILayout.ObjectField( "", (Object) Obj, Obj.GetType(), true );
-
-							Event ev = Event.current;
-							if( ev.type == EventType.MouseDown && ev.button == 1 && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
-							{
-								GenericMenu menu = new GenericMenu();
-								MenuItems.OnObjectRightClicked( menu, (Object) Obj );
-								menu.ShowAsContext();
-
-								GUIUtility.ExitGUI();
-							}
-						}
-						else
-						{
-							if( enumerableRoot != null )
-							{
-								EditorGUI.indentLevel++;
-								enumerableRoot.DrawOnGUI();
-								EditorGUI.indentLevel--;
-							}
-
-							if( variables != null )
-							{
-								for( int i = 0; i < variables.Count; i++ )
-								{
-									EditorGUI.indentLevel++;
-									variables[i].DrawOnGUI();
-									EditorGUI.indentLevel--;
-								}
-							}
+							for( int i = 0; i < variables.Count; i++ )
+								variables[i].DrawOnGUI();
 						}
 					}
+
+					if( !flattenChildren )
+						EditorGUI.indentLevel--;
 				}
 			}
 			else
 			{
-				if( EditorGUILayout.Foldout( false, Getter.description, true ) )
+				if( EditorGUILayout.Foldout( false, Variable.description, true ) )
 				{
 					IsExpanded = true;
 					GUIUtility.ExitGUI();
 				}
 			}
+		}
+
+		private bool DrawValueOnGUI()
+		{
+			EditorGUI.BeginChangeCheck();
+
+			object newValue = Obj;
+			if( Obj == null || Obj.Equals( null ) )
+			{
+				if( typeof( Object ).IsAssignableFrom( Variable.type ) )
+					newValue = EditorGUILayout.ObjectField( GUIContent.none, null, Variable.type, true );
+				else
+					EditorGUILayout.LabelField( "Null" );
+			}
+			else if( Obj is Object )
+			{
+				Type objType = Obj.GetType();
+				if( typeof( Object ).IsAssignableFrom( Variable.type ) && Variable.type.IsAssignableFrom( objType ) )
+					objType = Variable.type;
+
+				newValue = EditorGUILayout.ObjectField( GUIContent.none, (Object) Obj, objType, true );
+
+				Event ev = Event.current;
+				if( ev.type == EventType.MouseDown && ev.button == 1 && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
+				{
+					GenericMenu menu = new GenericMenu();
+					MenuItems.OnObjectRightClicked( menu, (Object) Obj );
+					menu.ShowAsContext();
+
+					GUIUtility.ExitGUI();
+				}
+			}
+			else if( Obj is bool )
+				newValue = EditorGUILayout.ToggleLeft( GUIContent.none, (bool) Obj );
+			else if( Obj is int )
+				newValue = EditorGUILayout.DelayedIntField( GUIContent.none, (int) Obj );
+			else if( Obj is float )
+				newValue = EditorGUILayout.DelayedFloatField( GUIContent.none, (float) Obj );
+			else if( Obj is string )
+				newValue = EditorGUILayout.DelayedTextField( GUIContent.none, (string) Obj );
+			else if( Obj is double )
+				newValue = EditorGUILayout.DelayedDoubleField( GUIContent.none, (double) Obj );
+			else if( Obj is long )
+				newValue = EditorGUILayout.LongField( GUIContent.none, (long) Obj );
+			else if( Obj is Vector3 )
+				newValue = EditorGUILayout.Vector3Field( GUIContent.none, (Vector3) Obj );
+			else if( Obj is Vector2 )
+				newValue = EditorGUILayout.Vector2Field( GUIContent.none, (Vector2) Obj );
+#if UNITY_2017_2_OR_NEWER
+			else if( Obj is Vector3Int )
+				newValue = EditorGUILayout.Vector3IntField( GUIContent.none, (Vector3Int) Obj );
+			else if( Obj is Vector2Int )
+				newValue = EditorGUILayout.Vector2IntField( GUIContent.none, (Vector2Int) Obj );
+#endif
+			else if( Obj is Vector4 )
+				newValue = EditorGUILayout.Vector4Field( GUIContent.none, (Vector4) Obj );
+			else if( Obj is Enum )
+				newValue = EditorGUILayout.EnumPopup( GUIContent.none, (Enum) Obj );
+			else if( Obj is Color )
+				newValue = EditorGUILayout.ColorField( GUIContent.none, (Color) Obj );
+			else if( Obj is Color32 )
+				newValue = (Color32) EditorGUILayout.ColorField( GUIContent.none, (Color32) Obj );
+			else if( Obj is LayerMask ) // Credit: http://answers.unity.com/answers/1387522/view.html
+				newValue = InternalEditorUtility.ConcatenatedLayersMaskToLayerMask( EditorGUILayout.MaskField( InternalEditorUtility.LayerMaskToConcatenatedLayersMask( (LayerMask) Obj ), InternalEditorUtility.layers ) );
+			else if( Obj is Rect )
+				newValue = EditorGUILayout.RectField( GUIContent.none, (Rect) Obj );
+			else if( Obj is Bounds )
+				newValue = EditorGUILayout.BoundsField( GUIContent.none, (Bounds) Obj );
+#if UNITY_2017_2_OR_NEWER
+			else if( Obj is RectInt )
+				newValue = EditorGUILayout.RectIntField( GUIContent.none, (RectInt) Obj );
+			else if( Obj is BoundsInt )
+				newValue = EditorGUILayout.BoundsIntField( GUIContent.none, (BoundsInt) Obj );
+#endif
+			else if( primitiveValue != null ) // Variable is primitive
+			{
+				EditorGUILayout.TextField( primitiveValue );
+
+				EditorGUI.EndChangeCheck();
+				return true;
+			}
+			else
+			{
+				EditorGUI.EndChangeCheck();
+				return false;
+			}
+
+			if( EditorGUI.EndChangeCheck() )
+			{
+				DebugModeEntry _parent = parent;
+				while( _parent != null )
+				{
+					if( _parent.Obj as Object )
+					{
+						Undo.RecordObject( (Object) _parent.Obj, "Change Value" );
+						if( _parent.Obj is Component )
+							Undo.RecordObject( ( (Component) _parent.Obj ).gameObject, "Change Value" ); // Required for at least name and tag properties
+
+						break;
+					}
+
+					_parent = _parent.parent;
+				}
+
+				Obj = newValue;
+				Variable.Set( parent != null ? parent.Obj : null, newValue );
+				Refresh();
+
+				GUIUtility.ExitGUI();
+			}
+
+			return true;
 		}
 
 		protected List<DebugModeEntry> PopList( int preferredSize = 8 )
@@ -182,12 +272,12 @@ namespace InspectPlusNamespace
 
 	public class DebugModeEnumerableEntry : DebugModeEntry
 	{
-		private struct EnumerableValueGetter
+		private struct EnumerableValueWrapper
 		{
 			public readonly DebugModeEnumerableEntry entry;
 			public readonly int index;
 
-			public EnumerableValueGetter( DebugModeEnumerableEntry entry, int index )
+			public EnumerableValueWrapper( DebugModeEnumerableEntry entry, int index )
 			{
 				this.entry = entry;
 				this.index = index;
@@ -196,6 +286,11 @@ namespace InspectPlusNamespace
 			public object GetValue( object obj )
 			{
 				return entry.GetEnumerableValue( index );
+			}
+
+			public void SetValue( object obj, object value )
+			{
+				entry.SetEnumerableValue( index, value );
 			}
 		}
 
@@ -218,7 +313,19 @@ namespace InspectPlusNamespace
 
 					// Add new entries to variables if there aren't enough entries
 					for( int i = variables.Count; i < count; i++ )
-						variables.Add( new DebugModeEntry( this ) { Getter = new VariableGetterHolder( i + ":", new EnumerableValueGetter( this, i ).GetValue ) } );
+					{
+						Type listType = Obj.GetType();
+						Type elementType;
+						if( listType.IsArray && listType.GetArrayRank() == 1 )
+							elementType = listType.GetElementType();
+						else if( listType.IsGenericType )
+							elementType = listType.GetGenericArguments()[0];
+						else
+							elementType = typeof( object );
+
+						EnumerableValueWrapper valueWrapper = new EnumerableValueWrapper( this, i );
+						variables.Add( new DebugModeEntry( this ) { Variable = new VariableGetterHolder( i + ":", elementType, valueWrapper.GetValue, valueWrapper.SetValue ) } );
+					}
 
 					// Remove excessive entries from variables
 					for( int i = variables.Count - 1; i >= count; i-- )
@@ -237,7 +344,8 @@ namespace InspectPlusNamespace
 							entry = variables[index];
 						else
 						{
-							entry = new DebugModeEntry( this ) { Getter = new VariableGetterHolder( index + ":", new EnumerableValueGetter( this, index ).GetValue ) };
+							EnumerableValueWrapper valueWrapper = new EnumerableValueWrapper( this, index );
+							entry = new DebugModeEntry( this ) { Variable = new VariableGetterHolder( index + ":", typeof( object ), valueWrapper.GetValue, valueWrapper.SetValue ) };
 							variables.Add( entry );
 						}
 
@@ -263,6 +371,12 @@ namespace InspectPlusNamespace
 				return ( (IList) Obj )[index];
 
 			return variables[index].Obj;
+		}
+
+		private void SetEnumerableValue( int index, object value )
+		{
+			if( Obj is IList )
+				( (IList) Obj )[index] = value;
 		}
 	}
 }
