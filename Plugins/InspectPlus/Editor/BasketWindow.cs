@@ -7,33 +7,44 @@ using UnityEngine;
 
 namespace InspectPlusNamespace
 {
+	// To support serializing scene objects and for performance reasons, BasketWindow uses two different save formats:
+	// 1) BasketWindowState.objects: used to save state during domain reloads (it's fast but it doesn't support serializing scene objects between Unity sessions)
+	// 2) BasketWindowSaveData: used to save state between Unity sessions and while saving/loading to/from a file (it's slow but it supports serializing scene objects between Unity sessions)
 	public class BasketWindow : EditorWindow, IHasCustomMenu
 	{
 		private const string SAVE_FILE_EXTENSION = "basket";
 		private const string SAVE_DIRECTORY = "Library/BasketWindows";
-		private const string LAST_WINDOW_SAVE_FILE = SAVE_DIRECTORY + "/_ActiveWindow." + SAVE_FILE_EXTENSION;
+		private const string ACTIVE_WINDOW_SAVE_FILE = SAVE_DIRECTORY + "/_ActiveWindow." + SAVE_FILE_EXTENSION;
 
 #pragma warning disable 0649
 		private BasketWindowDrawer treeView;
-		[SerializeField]
+#if !UNITY_2018_1_OR_NEWER
+		[SerializeField] // This data is saved between Editor sessions instead of savedData on Unity versions that don't support EditorApplication.wantsToQuit
+#endif
 		private BasketWindowState treeViewState = new BasketWindowState();
 		private SearchField searchField;
+
+#if UNITY_2018_1_OR_NEWER
+		[SerializeField] // This data is saved between Editor sessions inside EditorApplication.wantsToQuit on Unity 2018.1+
+#endif
+		private BasketWindowSaveData savedData;
 #pragma warning restore 0649
 
 		private bool shouldRepositionSelf;
-		private bool hasContentsBeenModified;
+		private bool isDirtyActiveWindow;
 		private int titleObjectCount = 0;
 
 		public static new void Show( bool newInstance )
 		{
 			BasketWindow window = newInstance ? CreateInstance<BasketWindow>() : GetWindow<BasketWindow>();
+			window.titleObjectCount = 0;
 			window.titleContent = new GUIContent( "Basket (0)" );
 			window.minSize = new Vector2( 200f, 100f );
 
 			if( newInstance )
 				window.shouldRepositionSelf = true;
-			else if( window.treeViewState.objects.Count == 0 && File.Exists( LAST_WINDOW_SAVE_FILE ) )
-				window.LoadData( LAST_WINDOW_SAVE_FILE );
+			else if( window.treeViewState.objects.Count == 0 && File.Exists( ACTIVE_WINDOW_SAVE_FILE ) )
+				window.LoadData( ACTIVE_WINDOW_SAVE_FILE );
 
 			window.Show();
 		}
@@ -70,7 +81,7 @@ namespace InspectPlusNamespace
 
 			menu.AddItem( new GUIContent( "Synchronize Selection With Unity" ), treeViewState.syncSelection, () => treeViewState.syncSelection = !treeViewState.syncSelection );
 
-			if( treeViewState.objects.Count > 0 )
+			if( treeViewState.objects.Count > 1 )
 			{
 				menu.AddSeparator( "" );
 
@@ -88,37 +99,83 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private void SaveData( string path )
-		{
-			File.WriteAllText( path, EditorJsonUtility.ToJson( treeViewState, true ) );
-		}
-
-		private void LoadData( string path )
-		{
-			EditorJsonUtility.FromJsonOverwrite( File.ReadAllText( path ), treeViewState );
-			treeViewState.objects.RemoveAll( ( obj ) => !obj );
-
-			if( treeView != null )
-				treeView.Reload();
-		}
-
 		private void Awake()
 		{
 			treeViewState.syncSelection = InspectPlusSettings.Instance.SyncBasketSelection;
+
+			if( savedData != null && savedData.IsValid )
+			{
+				// This BasketWindow has persisted between Editor sessions, reload its data
+				LoadData();
+			}
 		}
 
 		private void OnEnable()
 		{
 			treeViewState.objects.RemoveAll( ( obj ) => !obj );
+
+#if UNITY_2018_1_OR_NEWER
+			EditorApplication.wantsToQuit -= OnEditorQuitting;
+			EditorApplication.wantsToQuit += OnEditorQuitting;
+#endif
 		}
+
+		private void OnDisable()
+		{
+#if UNITY_2018_1_OR_NEWER
+			EditorApplication.wantsToQuit -= OnEditorQuitting;
+#endif
+		}
+
+#if UNITY_2018_1_OR_NEWER
+		private bool OnEditorQuitting()
+		{
+			// Calling SaveData inside OnDestroy doesn't seem to save the changes to savedData between Unity sessions
+			// on at least Unity 2019.4.26f1 (EditorWindow is possibly serialized before OnDestroy is invoked). Thus,
+			// we're saving the data in EditorApplication.wantsToQuit instead
+			SaveData();
+			return true;
+		}
+#endif
 
 		private void OnDestroy()
 		{
-			if( hasContentsBeenModified )
+			SaveData();
+		}
+
+		private void SaveData()
+		{
+			if( isDirtyActiveWindow )
 			{
 				Directory.CreateDirectory( SAVE_DIRECTORY );
-				SaveData( LAST_WINDOW_SAVE_FILE );
+				SaveData( ACTIVE_WINDOW_SAVE_FILE );
+
+				isDirtyActiveWindow = false;
 			}
+		}
+
+		private void SaveData( string path )
+		{
+			savedData = new BasketWindowSaveData();
+			savedData.Serialize( treeViewState.objects );
+			File.WriteAllText( path, EditorJsonUtility.ToJson( savedData, true ) );
+		}
+
+		private void LoadData( string path )
+		{
+			savedData = new BasketWindowSaveData();
+			EditorJsonUtility.FromJsonOverwrite( File.ReadAllText( path ), savedData );
+
+			LoadData();
+		}
+
+		private void LoadData()
+		{
+			treeViewState.objects = savedData.Deserialize();
+			treeViewState.objects.RemoveAll( ( obj ) => !obj );
+
+			if( treeView != null )
+				treeView.Reload();
 		}
 
 		private void OnGUI()
@@ -152,7 +209,7 @@ namespace InspectPlusNamespace
 			{
 				titleObjectCount = treeViewState.objects.Count;
 				titleContent = new GUIContent( "Basket (" + titleObjectCount + ")" );
-				hasContentsBeenModified = true;
+				isDirtyActiveWindow = true;
 			}
 
 			if( shouldRepositionSelf )
@@ -161,6 +218,57 @@ namespace InspectPlusNamespace
 				Vector2 _position = position.position + new Vector2( 50f, 50f );
 				position = new Rect( _position, position.size );
 			}
+		}
+	}
+
+	[System.Serializable]
+	public class BasketWindowSaveData
+	{
+#if UNITY_2019_2_OR_NEWER // Correctly save scene objects using GlobalObjectId on Unity 2019.2+
+		[SerializeField]
+		private string[] globalObjectIds;
+#else
+		[SerializeField]
+		private List<Object> objects;
+#endif
+
+#if UNITY_2019_2_OR_NEWER
+		public bool IsValid { get { return globalObjectIds != null && globalObjectIds.Length > 0; } }
+#else
+		public bool IsValid { get { return objects != null && objects.Count > 0; } }
+#endif
+
+		public void Serialize( List<Object> objects )
+		{
+#if UNITY_2019_2_OR_NEWER
+			Object[] _objects = objects.ToArray();
+			globalObjectIds = new string[_objects.Length];
+			GlobalObjectId[] _globalObjectIds = new GlobalObjectId[_objects.Length];
+			GlobalObjectId.GetGlobalObjectIdsSlow( _objects, _globalObjectIds );
+
+			for( int i = 0; i < _globalObjectIds.Length; i++ )
+				globalObjectIds[i] = _globalObjectIds[i].ToString();
+#else
+			this.objects = objects;
+#endif
+		}
+
+		public List<Object> Deserialize()
+		{
+#if UNITY_2019_2_OR_NEWER
+			if( globalObjectIds == null )
+				return new List<Object>();
+
+			Object[] result = new Object[globalObjectIds.Length];
+			GlobalObjectId[] _globalObjectIds = new GlobalObjectId[globalObjectIds.Length];
+			for( int i = 0; i < globalObjectIds.Length; i++ )
+				GlobalObjectId.TryParse( globalObjectIds[i], out _globalObjectIds[i] );
+
+			GlobalObjectId.GlobalObjectIdentifiersToObjectsSlow( _globalObjectIds, result );
+			return new List<Object>( result );
+#else
+			return objects ?? new List<Object>();
+#endif
 		}
 	}
 

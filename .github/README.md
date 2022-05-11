@@ -59,7 +59,7 @@ There are 4 ways to install this plugin:
 
 ![screenshot](Images/PasteFromBin.png)
 
-- You can open Basket via **Window/Inspect+/Basket**: this window stores the objects that you drag&drop inside it (unfortunately, once the window is closed, its scene object contents will be lost). You can right click the window's tab to save its contents to a file
+- You can open Basket via **Window/Inspect+/Basket**: this window stores the objects that you drag&drop inside it. You can right click the window's tab to save its contents to a file (on Unity 2019.1 or earlier, scene object contents aren't saved)
 
 ![screenshot](Images/Basket.png)
 
