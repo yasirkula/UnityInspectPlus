@@ -154,42 +154,6 @@ namespace InspectPlusNamespace
 		private GUILayoutOption scrollableListIconSize;
 
 		#region Initializers
-		[MenuItem( "Window/Inspect+/New Window" )]
-		private static void ShowNewWindow()
-		{
-			GetNewWindow();
-		}
-
-		[MenuItem( "Window/Inspect+/Paste Bin" )]
-		private static void ShowPasteBinWindow()
-		{
-			PasteBinWindow.Show();
-		}
-
-		[MenuItem( "Window/Inspect+/Basket (Active Window)" )]
-		private static void ShowActiveBasketWindow()
-		{
-			BasketWindow.Show( false );
-		}
-
-		[MenuItem( "Window/Inspect+/Basket (New Window)" )]
-		private static void ShowNewBasketWindow()
-		{
-			BasketWindow.Show( true );
-		}
-
-		[MenuItem( "Window/Inspect+/Diff Window" )]
-		private static void ShowObjectDiffWindow()
-		{
-			ObjectDiffWindow.Show();
-		}
-
-		[MenuItem( "Window/Inspect+/Settings" )]
-		private static void ShowSettings()
-		{
-			Selection.activeObject = InspectPlusSettings.Instance;
-		}
-
 		[InitializeOnLoadMethod]
 		private static void Initialize()
 		{
@@ -417,7 +381,7 @@ namespace InspectPlusNamespace
 			shouldRepaint = true;
 		}
 
-		private static InspectPlusWindow GetDefaultWindow()
+		internal static InspectPlusWindow GetDefaultWindow()
 		{
 			InspectPlusWindow result = GetWindow<InspectPlusWindow>();
 			result.titleContent = windowTitle;
@@ -427,7 +391,7 @@ namespace InspectPlusNamespace
 			return result;
 		}
 
-		private static InspectPlusWindow GetNewWindow()
+		internal static InspectPlusWindow GetNewWindow()
 		{
 			InspectPlusWindow result = CreateInstance<InspectPlusWindow>();
 			result.titleContent = windowTitle;
@@ -580,7 +544,7 @@ namespace InspectPlusNamespace
 
 			menu.AddSeparator( "" );
 
-			menu.AddItem( new GUIContent( "Paste Bin" ), false, ShowPasteBinWindow );
+			menu.AddItem( new GUIContent( "Paste Bin" ), false, PasteBinWindow.Show );
 
 			menu.AddItem( new GUIContent( "Settings" ), false, () => Selection.activeObject = InspectPlusSettings.Instance );
 

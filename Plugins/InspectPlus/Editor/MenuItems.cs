@@ -14,6 +14,44 @@ namespace InspectPlusNamespace
 
 		private static List<Object> objectsToOpenPasteBinWith;
 
+		#region Menu Buttons
+		[MenuItem( "Window/Inspect+/New Window", priority = 100 )]
+		private static void ShowNewWindow()
+		{
+			InspectPlusWindow.GetNewWindow();
+		}
+
+		[MenuItem( "Window/Inspect+/Basket (Active Window)", priority = 200 )]
+		private static void ShowActiveBasketWindow()
+		{
+			BasketWindow.Show( false );
+		}
+
+		[MenuItem( "Window/Inspect+/Basket (New Window)", priority = 201 )]
+		private static void ShowNewBasketWindow()
+		{
+			BasketWindow.Show( true );
+		}
+
+		[MenuItem( "Window/Inspect+/Paste Bin", priority = 300 )]
+		private static void ShowPasteBinWindow()
+		{
+			PasteBinWindow.Show();
+		}
+
+		[MenuItem( "Window/Inspect+/Diff Window", priority = 400 )]
+		private static void ShowObjectDiffWindow()
+		{
+			ObjectDiffWindow.Show();
+		}
+
+		[MenuItem( "Window/Inspect+/Settings", priority = 1000 )]
+		private static void ShowSettings()
+		{
+			Selection.activeObject = InspectPlusSettings.Instance;
+		}
+		#endregion
+
 		#region New Tab/Window Buttons
 		[MenuItem( "GameObject/Inspect+/" + NEW_TAB_LABEL, priority = 49 )]
 		[MenuItem( "Assets/Inspect+/" + NEW_TAB_LABEL, priority = 1500 )]
