@@ -353,7 +353,7 @@ namespace InspectPlusNamespace
 				GUI.DrawTexture( iconRect, icon, ScaleMode.ScaleToFit, true, 0f, iconTint, 0f, 0f );
 
 				if( PrefabUtility.IsAddedGameObjectOverride( go ) )
-					GUI.DrawTexture( iconRect, EditorGUIUtility.Load( "PrefabOverlayAdded Icon" ) as Texture, ScaleMode.ScaleToFit, true, 0f, iconTint, 0f, 0f );
+					GUI.DrawTexture( iconRect, EditorGUIUtility.IconContent( "PrefabOverlayAdded Icon" ).image, ScaleMode.ScaleToFit, true, 0f, iconTint, 0f, 0f );
 
 				rect.x += iconRect.width + 2f;
 			}

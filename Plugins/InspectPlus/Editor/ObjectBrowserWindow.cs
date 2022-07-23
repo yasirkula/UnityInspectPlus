@@ -97,7 +97,7 @@ namespace InspectPlusNamespace
 			this.onObjectFavoriteStateChanged = onObjectFavoriteStateChanged;
 			this.onWindowClosed = onWindowClosed;
 
-			addToFavoritesIcon = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture, "Add to Favorites" );
+			addToFavoritesIcon = new GUIContent( EditorGUIUtility.IconContent( "Favorite Icon" ).image, "Add to Favorites" );
 			removeFromFavoritesIcon = new GUIContent( addToFavoritesIcon.image, "Remove from Favorites" );
 
 			SortObjects();

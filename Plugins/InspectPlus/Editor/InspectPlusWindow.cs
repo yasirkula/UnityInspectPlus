@@ -196,8 +196,8 @@ namespace InspectPlusNamespace
 #endif
 			}
 
-			favoritesIconNoTooltip = new GUIContent( EditorGUIUtility.Load( "Favorite Icon" ) as Texture );
-			historyIconNoTooltip = new GUIContent( EditorGUIUtility.Load( EditorGUIUtility.isProSkin ? "Search On Icon" : "Search Icon" ) as Texture );
+			favoritesIconNoTooltip = new GUIContent( EditorGUIUtility.IconContent( "Favorite Icon" ).image );
+			historyIconNoTooltip = new GUIContent( EditorGUIUtility.IconContent( "Search Icon" ).image );
 			favoritesIcon = new GUIContent( favoritesIconNoTooltip.image, "Favorites" );
 			historyIcon = new GUIContent( historyIconNoTooltip.image, "History" );
 
@@ -936,11 +936,7 @@ namespace InspectPlusNamespace
 			if( showHierarchyWindow )
 			{
 				// Alternative: "UnityEditor.SceneHierarchyWindow"
-#if UNITY_2019_3_OR_NEWER
-				tabTitle.image = EditorGUIUtility.Load( EditorGUIUtility.isProSkin ? "ViewToolOrbit On@2x" : "ViewToolOrbit@2x" ) as Texture;
-#else
-				tabTitle.image = EditorGUIUtility.Load( EditorGUIUtility.isProSkin ? "ViewToolOrbit On" : "ViewToolOrbit" ) as Texture;
-#endif
+				tabTitle.image = EditorGUIUtility.IconContent( "ViewToolOrbit" ).image;
 			}
 
 			titleContent = tabTitle;
