@@ -115,6 +115,36 @@ namespace InspectPlusNamespace
 		}
 		#endregion
 
+		#region Add to Basket Buttons
+		[MenuItem( "GameObject/Inspect+/Add to Basket", priority = 49 )]
+		[MenuItem( "Assets/Inspect+/Add to Basket", priority = 1500 )]
+#if UNITY_2019_4_OR_NEWER
+		[MenuItem( "CONTEXT/Component/Inspect+/Add to Basket", priority = 1475 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Add to Basket", priority = 1475 )]
+		[MenuItem( "CONTEXT/AssetImporter/Inspect+/Add to Basket", priority = 1475 )]
+		[MenuItem( "CONTEXT/Material/Inspect+/Add to Basket", priority = 1475 )]
+#else
+		[MenuItem( "CONTEXT/Component/Add to Basket", priority = 1475 )]
+		[MenuItem( "CONTEXT/ScriptableObject/Add to Basket", priority = 1475 )]
+		[MenuItem( "CONTEXT/AssetImporter/Add to Basket", priority = 1475 )]
+		[MenuItem( "CONTEXT/Material/Add to Basket", priority = 1475 )]
+#endif
+		private static void ContextMenuItemAddToBasket( MenuCommand command )
+		{
+			if( command.context )
+				BasketWindow.Show( false ).AddToBasket( new Object[] { ( command.context is AssetImporter ) ? AssetDatabase.LoadMainAssetAtPath( ( (AssetImporter) command.context ).assetPath ) : command.context } );
+			else
+				BasketWindow.Show( false ).AddToBasket( Selection.objects );
+		}
+
+		[MenuItem( "GameObject/Inspect+/Add to Basket", validate = true )]
+		[MenuItem( "Assets/Inspect+/Add to Basket", validate = true )]
+		private static bool ContextMenuItemAddToBasketValidate( MenuCommand command )
+		{
+			return Selection.objects.Length > 0;
+		}
+		#endregion
+
 		#region Isolated Hierarchy Buttons
 		[MenuItem( "GameObject/Inspect+/Isolated Hierarchy/Open In New Tab", priority = 50 )]
 		private static void ContextMenuItemOpenIsolatedHierarchyNewTab( MenuCommand command )

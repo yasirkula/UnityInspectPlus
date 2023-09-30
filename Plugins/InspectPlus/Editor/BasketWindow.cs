@@ -34,7 +34,7 @@ namespace InspectPlusNamespace
 		private bool isDirtyActiveWindow;
 		private int titleObjectCount = 0;
 
-		public static new void Show( bool newInstance )
+		public static new BasketWindow Show( bool newInstance )
 		{
 			BasketWindow window = newInstance ? CreateInstance<BasketWindow>() : GetWindow<BasketWindow>();
 			window.titleObjectCount = 0;
@@ -47,6 +47,7 @@ namespace InspectPlusNamespace
 				window.LoadData( ACTIVE_WINDOW_SAVE_FILE );
 
 			window.Show();
+			return window;
 		}
 
 		void IHasCustomMenu.AddItemsToMenu( GenericMenu menu )
@@ -143,6 +144,18 @@ namespace InspectPlusNamespace
 			SaveData();
 		}
 
+		private void InitializeTreeViewIfNecessary()
+		{
+			if( treeView == null )
+				treeView = new BasketWindowDrawer( treeViewState );
+		}
+
+		public void AddToBasket( Object[] objects )
+		{
+			InitializeTreeViewIfNecessary();
+			treeView.AddObjects( objects, treeViewState.objects.Count );
+		}
+
 		private void SaveData()
 		{
 			if( isDirtyActiveWindow )
@@ -180,8 +193,7 @@ namespace InspectPlusNamespace
 
 		private void OnGUI()
 		{
-			if( treeView == null )
-				treeView = new BasketWindowDrawer( treeViewState );
+			InitializeTreeViewIfNecessary();
 
 			if( searchField == null )
 			{
@@ -381,34 +393,7 @@ namespace InspectPlusNamespace
 				return DragAndDropVisualMode.None;
 
 			if( args.performDrop )
-			{
-				List<Object> objects = state.objects;
-				Object[] draggedObjects = DragAndDrop.objectReferences;
-				List<int> draggedInstanceIDs = new List<int>( draggedObjects.Length );
-				int insertIndex = ( args.dragAndDropPosition == DragAndDropPosition.OutsideItems ) ? objects.Count : args.insertAtIndex;
-				for( int i = 0; i < draggedObjects.Length; i++ )
-				{
-					if( !draggedObjects[i] )
-						continue;
-
-					objects.Insert( insertIndex + draggedInstanceIDs.Count, draggedObjects[i] );
-					draggedInstanceIDs.Add( draggedObjects[i].GetInstanceID() );
-				}
-
-				int addedObjectCount = draggedInstanceIDs.Count;
-				if( addedObjectCount > 0 )
-				{
-					// Remove duplicates
-					for( int i = objects.Count - 1; i >= 0; i-- )
-					{
-						if( ( i < insertIndex || i >= insertIndex + addedObjectCount ) && System.Array.IndexOf( draggedObjects, objects[i] ) >= 0 )
-							objects.RemoveAt( i );
-					}
-
-					SetSelection( draggedInstanceIDs, TreeViewSelectionOptions.FireSelectionChanged );
-					Reload();
-				}
-			}
+				AddObjects( DragAndDrop.objectReferences, ( args.dragAndDropPosition == DragAndDropPosition.OutsideItems ) ? state.objects.Count : args.insertAtIndex );
 
 			return DragAndDropVisualMode.Copy;
 		}
@@ -432,6 +417,34 @@ namespace InspectPlusNamespace
 			}
 
 			base.CommandEventHandling();
+		}
+
+		public void AddObjects( Object[] objectsToAdd, int insertIndex )
+		{
+			List<Object> objects = state.objects;
+			List<int> addedInstanceIDs = new List<int>( objectsToAdd.Length );
+			for( int i = 0; i < objectsToAdd.Length; i++ )
+			{
+				if( !objectsToAdd[i] )
+					continue;
+
+				objects.Insert( insertIndex + addedInstanceIDs.Count, objectsToAdd[i] );
+				addedInstanceIDs.Add( objectsToAdd[i].GetInstanceID() );
+			}
+
+			int addedObjectCount = addedInstanceIDs.Count;
+			if( addedObjectCount > 0 )
+			{
+				// Remove duplicates
+				for( int i = objects.Count - 1; i >= 0; i-- )
+				{
+					if( ( i < insertIndex || i >= insertIndex + addedObjectCount ) && System.Array.IndexOf( objectsToAdd, objects[i] ) >= 0 )
+						objects.RemoveAt( i );
+				}
+
+				SetSelection( addedInstanceIDs, TreeViewSelectionOptions.FireSelectionChanged );
+				Reload();
+			}
 		}
 
 		private void RemoveObjects( IList<int> instanceIDs )
