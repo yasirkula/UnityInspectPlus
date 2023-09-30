@@ -324,6 +324,11 @@ namespace InspectPlusNamespace
 			Selection.instanceIDs = selectionArray;
 		}
 
+		protected override void DoubleClickedItem( int id )
+		{
+			AssetDatabase.OpenAsset( id );
+		}
+
 		protected override void ContextClickedItem( int id )
 		{
 			ContextClicked();
