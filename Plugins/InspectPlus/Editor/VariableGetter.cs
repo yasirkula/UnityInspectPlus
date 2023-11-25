@@ -66,8 +66,9 @@ namespace InspectPlusNamespace
 			if( Attribute.IsDefined( fieldInfo, typeof( ObsoleteAttribute ) ) )
 				sb.Append( "(O)" );
 
-			sb.Append( " " ).Append( fieldInfo.Name );
+			sb.Append( " " ).Append( fieldInfo.Name ).Append( " (" );
 			AppendTypeToDescription( sb, type );
+			sb.Append( ")" );
 
 			this.description = sb.ToString();
 			this.name = fieldInfo.Name;
@@ -96,8 +97,9 @@ namespace InspectPlusNamespace
 			if( Attribute.IsDefined( propertyInfo, typeof( ObsoleteAttribute ) ) )
 				sb.Append( "(O)" );
 
-			sb.Append( " " ).Append( propertyInfo.Name );
+			sb.Append( " " ).Append( propertyInfo.Name ).Append( " (" );
 			AppendTypeToDescription( sb, type );
+			sb.Append( ")" );
 
 			this.description = sb.ToString();
 			this.name = propertyInfo.Name;
@@ -125,8 +127,9 @@ namespace InspectPlusNamespace
 			if( Attribute.IsDefined( methodInfo, typeof( ObsoleteAttribute ) ) )
 				sb.Append( "(O)" );
 
-			sb.Append( " " ).Append( methodInfo.Name ).Append( "()" );
+			sb.Append( " " ).Append( methodInfo.Name ).Append( "() (" );
 			AppendTypeToDescription( sb, type );
+			sb.Append( ")" );
 
 			this.description = sb.ToString();
 			this.name = methodInfo.Name;
@@ -136,8 +139,6 @@ namespace InspectPlusNamespace
 
 		private static void AppendTypeToDescription( StringBuilder sb, Type type )
 		{
-			sb.Append( " (" );
-
 			string name;
 			if( !typeNamesLookup.TryGetValue( type, out name ) )
 				name = type.Name;
@@ -165,8 +166,6 @@ namespace InspectPlusNamespace
 
 				sb.Append( ">" );
 			}
-
-			sb.Append( ")" );
 		}
 
 		public object Get( object obj )
