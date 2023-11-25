@@ -72,16 +72,19 @@ namespace InspectPlusNamespace
 						enumerableRoot = null;
 					}
 
-					if( variables == null )
+					if( !( Obj is ICollection ) ) // Display only the enumerable elements of ICollections
 					{
-						VariableGetterHolder[] childGetters = Utilities.GetFilteredVariablesForType( Obj.GetType() );
-						variables = PopList( childGetters.Length );
-						for( int i = 0; i < childGetters.Length; i++ )
-							variables.Add( new DebugModeEntry( this ) { Variable = childGetters[i] } );
-					}
+						if( variables == null )
+						{
+							VariableGetterHolder[] childGetters = Utilities.GetFilteredVariablesForType( Obj.GetType() );
+							variables = PopList( childGetters.Length );
+							for( int i = 0; i < childGetters.Length; i++ )
+								variables.Add( new DebugModeEntry( this ) { Variable = childGetters[i] } );
+						}
 
-					for( int i = 0; i < variables.Count; i++ )
-						variables[i].Refresh();
+						for( int i = 0; i < variables.Count; i++ )
+							variables[i].Refresh();
+					}
 				}
 			}
 		}
@@ -106,7 +109,7 @@ namespace InspectPlusNamespace
 					if( parent == null || !DrawValueOnGUI() )
 					{
 						if( enumerableRoot != null )
-							enumerableRoot.DrawOnGUI();
+							enumerableRoot.DrawOnGUI( variables == null ); // If only the enumerable elements exist, flatten them
 
 						if( variables != null )
 						{
