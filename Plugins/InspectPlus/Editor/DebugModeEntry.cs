@@ -201,6 +201,10 @@ namespace InspectPlusNamespace
 			else if( Obj is BoundsInt )
 				newValue = EditorGUILayout.BoundsIntField( GUIContent.none, (BoundsInt) Obj );
 #endif
+			else if( Obj is AnimationCurve )
+				newValue = EditorGUILayout.CurveField( GUIContent.none, (AnimationCurve) Obj );
+			else if( Obj is Gradient )
+				newValue = PasteBinWindow.gradientField.Invoke( null, new object[] { GUIContent.none, (Gradient) Obj, null } );
 			else if( primitiveValue != null ) // Variable is primitive
 			{
 				EditorGUILayout.TextField( primitiveValue );

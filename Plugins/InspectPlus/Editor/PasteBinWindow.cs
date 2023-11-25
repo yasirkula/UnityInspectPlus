@@ -97,7 +97,7 @@ namespace InspectPlusNamespace
 		private static string ClipboardSavePath { get { return Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.LocalApplicationData ), "Unity" + Path.DirectorySeparatorChar + "UnityInspectPlus.dat" ); } }
 
 		private static GUIStyle clipboardLabelGUIStyle;
-		private static readonly MethodInfo gradientField = typeof( EditorGUILayout ).GetMethod( "GradientField", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof( GUIContent ), typeof( Gradient ), typeof( GUILayoutOption[] ) }, null );
+		internal static readonly MethodInfo gradientField = typeof( EditorGUILayout ).GetMethod( "GradientField", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof( GUIContent ), typeof( Gradient ), typeof( GUILayoutOption[] ) }, null );
 
 		private int clickedSerializedClipboardIndex = -1;
 		private Vector2 scrollPosition;
