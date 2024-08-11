@@ -502,7 +502,7 @@ namespace InspectPlusNamespace
 			menu.AddItem( new GUIContent( "Clear Favorites" ), false, () =>
 			{
 				InspectPlusSettings.Instance.FavoriteAssets.Clear();
-				EditorUtility.SetDirty( InspectPlusSettings.Instance );
+				InspectPlusSettings.Instance.Save();
 
 				for( int i = 0; i < SceneFavoritesHolder.Instances.Count; i++ )
 				{
@@ -1619,12 +1619,12 @@ namespace InspectPlusNamespace
 				if( lists == favoritesHolder && sortType2 != InspectPlusSettings.Instance.FavoritesSortType )
 				{
 					InspectPlusSettings.Instance.FavoritesSortType = sortType2;
-					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+					InspectPlusSettings.Instance.Save();
 				}
 				else if( lists == historyHolder && sortType2 != InspectPlusSettings.Instance.HistorySortType )
 				{
 					InspectPlusSettings.Instance.HistorySortType = sortType2;
-					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+					InspectPlusSettings.Instance.Save();
 				}
 			} );
 
@@ -1848,7 +1848,7 @@ namespace InspectPlusNamespace
 
 				favorites.Add( obj );
 				showFavorites = true;
-				EditorUtility.SetDirty( InspectPlusSettings.Instance );
+				InspectPlusSettings.Instance.Save();
 			}
 
 			if( objectBrowserWindow )
@@ -1877,7 +1877,7 @@ namespace InspectPlusNamespace
 				}
 
 				if( !isSceneFavoriteList )
-					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+					InspectPlusSettings.Instance.Save();
 
 				if( objectBrowserWindow )
 					objectBrowserWindow.favoriteObjects.Remove( obj );

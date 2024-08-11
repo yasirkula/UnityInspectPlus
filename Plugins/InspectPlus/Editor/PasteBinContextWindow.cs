@@ -182,7 +182,7 @@ namespace InspectPlusNamespace
 				InspectPlusSettings.Instance.SmartCopyPaste = GUILayout.Toggle( InspectPlusSettings.Instance.SmartCopyPaste, InspectPlusSettings.Instance.SmartCopyPaste ? smartPasteOnButtonLabel : smartPasteOffButtonLabel, GUI.skin.button );
 				if( EditorGUI.EndChangeCheck() )
 				{
-					EditorUtility.SetDirty( InspectPlusSettings.Instance );
+					InspectPlusSettings.Instance.Save();
 
 					if( targetProperty != null )
 					{

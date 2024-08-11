@@ -1,35 +1,29 @@
 ﻿using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace InspectPlusNamespace
 {
 	public class InspectPlusSettings : ScriptableObject
 	{
-		private const string INITIAL_SAVE_PATH = "Assets/Plugins/InspectPlus/InspectPlusSettings.asset";
+		private const string SAVE_PATH = "UserSettings/InspectPlusSettings.asset";
 
 		private static InspectPlusSettings m_instance;
 		public static InspectPlusSettings Instance
 		{
 			get
 			{
-				if( !m_instance )
+				if( m_instance == null )
 				{
-					string[] instances = AssetDatabase.FindAssets( "t:InspectPlusSettings" );
-					if( instances != null && instances.Length > 0 )
-						m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( AssetDatabase.GUIDToAssetPath( instances[0] ) );
+					if( File.Exists( SAVE_PATH ) )
+						m_instance = InternalEditorUtility.LoadSerializedFileAndForget( SAVE_PATH )[0] as InspectPlusSettings;
+					else
+						m_instance = CreateInstance<InspectPlusSettings>();
 
-					if( !m_instance )
-					{
-						Directory.CreateDirectory( Path.GetDirectoryName( INITIAL_SAVE_PATH ) );
-
-						AssetDatabase.CreateAsset( CreateInstance<InspectPlusSettings>(), INITIAL_SAVE_PATH );
-						AssetDatabase.SaveAssets();
-						m_instance = AssetDatabase.LoadAssetAtPath<InspectPlusSettings>( INITIAL_SAVE_PATH );
-
-						Debug.Log( "Created Inspect+ settings file at " + INITIAL_SAVE_PATH + ". You can move this file around freely.", m_instance );
-					}
+					m_instance.name = typeof( InspectPlusSettings ).Name;
+					m_instance.hideFlags = HideFlags.DontSave;
 				}
 
 				return m_instance;
@@ -89,13 +83,64 @@ namespace InspectPlusNamespace
 		[Tooltip( "Clearing the History via context menu will delete the currently inspected object's History entry, as well" )]
 		public bool ClearingHistoryRemovesActiveObject = false;
 
-		private void OnEnable()
+		private double autoSaveTime;
+
+		/// <summary>
+		/// Without this constructor, <see cref="m_instance"/> is reset after domain reload (causing duplicate <see cref="InspectPlusSettings"/> instances in memory).
+		/// </summary>
+		protected InspectPlusSettings()
+		{
+			m_instance = this;
+		}
+
+		protected void OnEnable()
 		{
 			for( int i = FavoriteAssets.Count - 1; i >= 0; i-- )
 			{
 				if( !FavoriteAssets[i] )
 					FavoriteAssets.RemoveAt( i );
 			}
+
+			/// After domain reload, <see cref="OnValidate"/> is invoked just before <see cref="OnEnable"/>. Don't save settings after every domain reload, so reset <see cref="autoSaveTime"/> here.
+			autoSaveTime = 0;
+			EditorApplication.update -= OnEditorUpdate;
+
+			// If a settings asset in Assets folder is selected (they were saved in Assets on older versions of Inspect+), delete it
+			string path = AssetDatabase.GetAssetPath( this );
+			if( !string.IsNullOrEmpty( path ) && path.StartsWith( "Assets/" ) )
+			{
+				Debug.LogWarning( "<b>Inspect+ settings are now loaded from \"" + SAVE_PATH + "\". Deleting obsolete asset: \"" + AssetDatabase.GetAssetPath( this ) + "\"</b>" );
+				AssetDatabase.DeleteAsset( path );
+				m_instance = null;
+			}
+		}
+
+		/// <summary>
+		/// Since this asset is no longer serialized in Assets folder (<see cref="SAVE_PATH"/>), it isn't auto-saved by AssetDatabase. So we need to save it manually when a change is made.
+		/// A timer is used to avoid excessive auto-saving while a value is rapidly changing (e.g. changing a float variable by dragging its name).
+		/// </summary>
+		protected void OnValidate()
+		{
+			if( autoSaveTime == 0 )
+				EditorApplication.update += OnEditorUpdate;
+
+			autoSaveTime = EditorApplication.timeSinceStartup + 2;
+		}
+
+		private void OnEditorUpdate()
+		{
+			if( EditorApplication.timeSinceStartup >= autoSaveTime )
+			{
+				EditorApplication.update -= OnEditorUpdate;
+				Save();
+			}
+		}
+
+		public void Save()
+		{
+			autoSaveTime = 0;
+			Directory.CreateDirectory( Path.GetDirectoryName( SAVE_PATH ) );
+			InternalEditorUtility.SaveToSerializedFileAndForget( new[] { this }, SAVE_PATH, true );
 		}
 	}
 }
