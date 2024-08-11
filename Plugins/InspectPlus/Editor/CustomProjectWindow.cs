@@ -361,7 +361,14 @@ namespace InspectPlusNamespace
 
 		protected override void DoubleClickedItem( int id )
 		{
-			AssetDatabase.OpenAsset( id );
+			Object obj = EditorUtility.InstanceIDToObject( id );
+			if( obj != null )
+			{
+				if( obj is DefaultAsset && AssetDatabase.IsValidFolder( AssetDatabase.GetAssetPath( obj ) ) )
+					SetExpanded( id, true );
+				else
+					AssetDatabase.OpenAsset( obj );
+			}
 		}
 
 		protected override void ContextClicked()
