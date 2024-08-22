@@ -10,7 +10,6 @@ using UnityEditor.AssetImporters;
 using UnityEditor.Experimental.AssetImporters;
 #endif
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
 namespace InspectPlusNamespace
@@ -503,12 +502,6 @@ namespace InspectPlusNamespace
 			{
 				InspectPlusSettings.Instance.FavoriteAssets.Clear();
 				InspectPlusSettings.Instance.Save();
-
-				for( int i = 0; i < SceneFavoritesHolder.Instances.Count; i++ )
-				{
-					SceneFavoritesHolder.Instances[i].FavoriteObjects.Clear();
-					SceneFavoritesHolder.Instances[i].SetSceneDirty();
-				}
 			} );
 
 			menu.AddItem( new GUIContent( "Clear History" ), false, () =>
@@ -985,9 +978,6 @@ namespace InspectPlusNamespace
 			{
 				favoritesHolder.Clear();
 				favoritesHolder.Add( InspectPlusSettings.Instance.FavoriteAssets );
-				for( int i = 0; i < SceneFavoritesHolder.Instances.Count; i++ )
-					favoritesHolder.Add( SceneFavoritesHolder.Instances[i].FavoriteObjects );
-
 				favoritesRefreshTime = time + FAVORITES_REFRESH_INTERVAL;
 			}
 
@@ -1794,48 +1784,10 @@ namespace InspectPlusNamespace
 
 		private bool TryAddObjectToFavorites( Object obj )
 		{
-			SceneFavoritesHolder sceneFavoritesHolder = null;
-
-			if( AssetDatabase.Contains( obj ) )
-				sceneFavoritesHolder = null;
-			else
+			if( !AssetDatabase.Contains( obj ) )
 			{
-				Scene scene;
-				if( obj is Component )
-					scene = ( (Component) obj ).gameObject.scene;
-				else if( obj is GameObject )
-					scene = ( (GameObject) obj ).scene;
-				else
-					scene = new Scene();
-
-				if( scene.IsValid() && scene.isLoaded )
-				{
-					for( int i = 0; i < SceneFavoritesHolder.Instances.Count; i++ )
-					{
-						if( SceneFavoritesHolder.Instances[i].gameObject.scene == scene )
-						{
-							sceneFavoritesHolder = SceneFavoritesHolder.Instances[i];
-							break;
-						}
-					}
-
-					if( !sceneFavoritesHolder )
-						sceneFavoritesHolder = SceneFavoritesHolder.GetInstance( scene );
-				}
-			}
-
-			if( sceneFavoritesHolder )
-			{
-				List<Object> favorites = sceneFavoritesHolder.FavoriteObjects;
-				for( int i = 0; i < favorites.Count; i++ )
-				{
-					if( favorites[i] == obj )
-						return false;
-				}
-
-				favorites.Add( obj );
-				showFavorites = true;
-				sceneFavoritesHolder.SetSceneDirty();
+				Debug.LogWarning( "Scene objects can't be added to Inspect+ favorites list. Use \"Window/Inspect+/Basket\" instead" );
+				return false;
 			}
 			else
 			{
@@ -1864,20 +1816,7 @@ namespace InspectPlusNamespace
 
 			if( list != history )
 			{
-				bool isSceneFavoriteList = false;
-				for( int i = 0; i < SceneFavoritesHolder.Instances.Count; i++ )
-				{
-					if( SceneFavoritesHolder.Instances[i].FavoriteObjects == list )
-					{
-						isSceneFavoriteList = true;
-						SceneFavoritesHolder.Instances[i].SetSceneDirty();
-
-						break;
-					}
-				}
-
-				if( !isSceneFavoriteList )
-					InspectPlusSettings.Instance.Save();
+				InspectPlusSettings.Instance.Save();
 
 				if( objectBrowserWindow )
 					objectBrowserWindow.favoriteObjects.Remove( obj );

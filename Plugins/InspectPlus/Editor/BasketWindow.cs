@@ -1,37 +1,60 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using Object = UnityEngine.Object;
 
 namespace InspectPlusNamespace
 {
-	// To support serializing scene objects and for performance reasons, BasketWindow uses two different save formats:
-	// 1) BasketWindowState.objects: used to save state during domain reloads (it's fast but it doesn't support serializing scene objects between Unity sessions)
-	// 2) BasketWindowSaveData: used to save state between Unity sessions and while saving/loading to/from a file (it's slow but it supports serializing scene objects between Unity sessions)
 	public class BasketWindow : EditorWindow, IHasCustomMenu
 	{
+		private class NameComparer<T> : IComparer<T> where T : BasketWindowEntry
+		{
+			public int Compare( T x, T y )
+			{
+				return EditorUtility.NaturalCompare( x.Name, y.Name );
+			}
+		}
+
+		private class TypeComparer<T> : IComparer<T> where T : BasketWindowEntry
+		{
+			private readonly ObjectBrowserWindow.TypeComparer objectTypeComparer = new ObjectBrowserWindow.TypeComparer();
+
+			public int Compare( T x, T y )
+			{
+				if( x.Target == null )
+				{
+					if( y.Target != null )
+						return 1;
+					else
+						return EditorUtility.NaturalCompare( x.Name, y.Name );
+				}
+				else if( y.Target == null )
+					return -1;
+
+				return objectTypeComparer.Compare( x.Target, y.Target );
+			}
+		}
+
 		private const string SAVE_FILE_EXTENSION = "basket";
-		private const string SAVE_DIRECTORY = "Library/BasketWindows";
+		private const string SAVE_DIRECTORY = "UserSettings/BasketWindows";
 		private const string ACTIVE_WINDOW_SAVE_FILE = SAVE_DIRECTORY + "/_ActiveWindow." + SAVE_FILE_EXTENSION;
 
 #pragma warning disable 0649
 		private BasketWindowDrawer treeView;
-#if !UNITY_2018_1_OR_NEWER
-		[SerializeField] // This data is saved between Editor sessions instead of savedData on Unity versions that don't support EditorApplication.wantsToQuit
-#endif
+		[SerializeField]
 		private BasketWindowState treeViewState = new BasketWindowState();
 		private SearchField searchField;
-
-#if UNITY_2018_1_OR_NEWER
-		[SerializeField] // This data is saved between Editor sessions inside EditorApplication.wantsToQuit on Unity 2018.1+
-#endif
-		private BasketWindowSaveData savedData;
 #pragma warning restore 0649
 
 		private bool shouldRepositionSelf;
-		private bool isDirtyActiveWindow;
+		private bool isDataDirty;
+		private bool isHierarchyWindowDirty, isProjectWindowDirty, isNewSceneOpened;
 		private int titleObjectCount = 0;
 
 		public static new BasketWindow Show( bool newInstance )
@@ -43,7 +66,7 @@ namespace InspectPlusNamespace
 
 			if( newInstance )
 				window.shouldRepositionSelf = true;
-			else if( window.treeViewState.objects.Count == 0 && File.Exists( ACTIVE_WINDOW_SAVE_FILE ) )
+			else if( window.treeViewState.Entries.Count == 0 && File.Exists( ACTIVE_WINDOW_SAVE_FILE ) )
 				window.LoadData( ACTIVE_WINDOW_SAVE_FILE );
 
 			window.Show();
@@ -55,7 +78,7 @@ namespace InspectPlusNamespace
 			if( treeView == null )
 				return;
 
-			if( treeViewState.objects.Count > 0 )
+			if( treeViewState.Entries.Count > 0 )
 			{
 				menu.AddItem( new GUIContent( "Save..." ), false, () =>
 				{
@@ -80,21 +103,33 @@ namespace InspectPlusNamespace
 
 			menu.AddSeparator( "" );
 
-			menu.AddItem( new GUIContent( "Synchronize Selection With Unity" ), treeViewState.syncSelection, () => treeViewState.syncSelection = !treeViewState.syncSelection );
+			menu.AddItem( new GUIContent( "Synchronize Selection With Unity" ), treeViewState.SyncSelection, () => treeViewState.SyncSelection = !treeViewState.SyncSelection );
 
-			if( treeViewState.objects.Count > 1 )
+			if( treeViewState.Entries.Count > 1 )
 			{
 				menu.AddSeparator( "" );
 
 				menu.AddItem( new GUIContent( "Sort By Name" ), false, () =>
 				{
-					treeViewState.objects.Sort( new ObjectBrowserWindow.NameComparer() );
+					treeViewState.Entries.Sort( new NameComparer<BasketWindowRootEntry>() );
+					foreach( BasketWindowRootEntry entry in treeViewState.Entries )
+					{
+						if( entry.Children.Count > 0 )
+							entry.Children.Sort( new NameComparer<BasketWindowChildEntry>() );
+					}
+
 					treeView.Reload();
 				} );
 
 				menu.AddItem( new GUIContent( "Sort By Type" ), false, () =>
 				{
-					treeViewState.objects.Sort( new ObjectBrowserWindow.TypeComparer() );
+					treeViewState.Entries.Sort( new TypeComparer<BasketWindowRootEntry>() );
+					foreach( BasketWindowRootEntry entry in treeViewState.Entries )
+					{
+						if( entry.Children.Count > 0 )
+							entry.Children.Sort( new TypeComparer<BasketWindowChildEntry>() );
+					}
+
 					treeView.Reload();
 				} );
 			}
@@ -102,9 +137,9 @@ namespace InspectPlusNamespace
 
 		private void Awake()
 		{
-			treeViewState.syncSelection = InspectPlusSettings.Instance.SyncBasketSelection;
+			treeViewState.SyncSelection = InspectPlusSettings.Instance.SyncBasketSelection;
 
-			if( savedData != null && savedData.IsValid )
+			if( treeViewState.Entries.Count > 0 )
 			{
 				// This BasketWindow has persisted between Editor sessions, reload its data
 				LoadData();
@@ -113,16 +148,15 @@ namespace InspectPlusNamespace
 
 		private void OnEnable()
 		{
-			treeViewState.objects.RemoveAll( ( obj ) => !obj );
-
+			EditorSceneManager.sceneOpened += OnSceneOpened;
 #if UNITY_2018_1_OR_NEWER
-			EditorApplication.wantsToQuit -= OnEditorQuitting;
 			EditorApplication.wantsToQuit += OnEditorQuitting;
 #endif
 		}
 
 		private void OnDisable()
 		{
+			EditorSceneManager.sceneOpened -= OnSceneOpened;
 #if UNITY_2018_1_OR_NEWER
 			EditorApplication.wantsToQuit -= OnEditorQuitting;
 #endif
@@ -144,6 +178,21 @@ namespace InspectPlusNamespace
 			SaveData();
 		}
 
+		private void OnSceneOpened( Scene scene, OpenSceneMode mode )
+		{
+			isNewSceneOpened = isHierarchyWindowDirty = true;
+		}
+
+		private void OnHierarchyChange()
+		{
+			isHierarchyWindowDirty = true;
+		}
+
+		private void OnProjectChange()
+		{
+			isProjectWindowDirty = true;
+		}
+
 		private void InitializeTreeViewIfNecessary()
 		{
 			if( treeView == null )
@@ -153,39 +202,34 @@ namespace InspectPlusNamespace
 		public void AddToBasket( Object[] objects )
 		{
 			InitializeTreeViewIfNecessary();
-			treeView.AddObjects( objects, treeViewState.objects.Count );
+			treeView.AddObjects( objects, treeViewState.Entries.Count );
 		}
 
 		private void SaveData()
 		{
-			if( isDirtyActiveWindow )
+			if( isDataDirty )
 			{
 				Directory.CreateDirectory( SAVE_DIRECTORY );
 				SaveData( ACTIVE_WINDOW_SAVE_FILE );
 
-				isDirtyActiveWindow = false;
+				isDataDirty = false;
 			}
 		}
 
 		private void SaveData( string path )
 		{
-			savedData = new BasketWindowSaveData();
-			savedData.Serialize( treeViewState.objects );
-			File.WriteAllText( path, EditorJsonUtility.ToJson( savedData, true ) );
+			File.WriteAllText( path, EditorJsonUtility.ToJson( treeViewState, false ) );
 		}
 
 		private void LoadData( string path )
 		{
-			savedData = new BasketWindowSaveData();
-			EditorJsonUtility.FromJsonOverwrite( File.ReadAllText( path ), savedData );
-
+			EditorJsonUtility.FromJsonOverwrite( File.ReadAllText( path ), treeViewState );
 			LoadData();
 		}
 
 		private void LoadData()
 		{
-			treeViewState.objects = savedData.Deserialize();
-			treeViewState.objects.RemoveAll( ( obj ) => !obj );
+			isHierarchyWindowDirty = isProjectWindowDirty = isNewSceneOpened = true;
 
 			if( treeView != null )
 				treeView.Reload();
@@ -201,9 +245,38 @@ namespace InspectPlusNamespace
 				searchField.downOrUpArrowKeyPressed += treeView.SetFocusAndEnsureSelectedItem;
 			}
 
-			string searchTerm = treeViewState.searchTerm;
-			treeViewState.searchTerm = searchField.OnToolbarGUI( searchTerm );
-			if( treeViewState.searchTerm != searchTerm )
+			bool isDirty = false;
+			if( isNewSceneOpened )
+			{
+				isNewSceneOpened = false;
+				foreach( BasketWindowRootEntry entry in treeViewState.Entries )
+					isDirty |= entry.RefreshTargetsOfChildren();
+			}
+
+			if( isHierarchyWindowDirty )
+			{
+				isHierarchyWindowDirty = false;
+				foreach( BasketWindowRootEntry entry in treeViewState.Entries )
+				{
+					if( entry.Target as SceneAsset )
+						isDirty |= entry.RefreshNamesOfChildren();
+				}
+			}
+
+			if( isProjectWindowDirty )
+			{
+				isProjectWindowDirty = false;
+				foreach( BasketWindowRootEntry entry in treeViewState.Entries )
+					isDirty |= entry.RefreshName();
+			}
+
+			isDataDirty |= isDirty;
+
+			string searchTerm = treeViewState.SearchTerm;
+			treeViewState.SearchTerm = searchField.OnToolbarGUI( searchTerm );
+			isDirty |= treeViewState.SearchTerm != searchTerm;
+
+			if( isDirty )
 				treeView.Reload();
 
 			treeView.OnGUI( GUILayoutUtility.GetRect( 0f, 100000f, 0f, 100000f ) );
@@ -217,11 +290,12 @@ namespace InspectPlusNamespace
 				Repaint();
 			}
 
-			if( titleObjectCount != treeViewState.objects.Count )
+			int entryCount = treeViewState.TotalEntryCount;
+			if( titleObjectCount != entryCount )
 			{
-				titleObjectCount = treeViewState.objects.Count;
+				titleObjectCount = entryCount;
 				titleContent = new GUIContent( "Basket (" + titleObjectCount + ")" );
-				isDirtyActiveWindow = true;
+				isDataDirty = true;
 			}
 
 			if( shouldRepositionSelf )
@@ -233,70 +307,138 @@ namespace InspectPlusNamespace
 		}
 	}
 
-	[System.Serializable]
-	public class BasketWindowSaveData
+	public abstract class BasketWindowEntry
 	{
-#if UNITY_2019_2_OR_NEWER // Correctly save scene objects using GlobalObjectId on Unity 2019.2+
-		[SerializeField]
-		private string[] globalObjectIds;
-#else
-		[SerializeField]
-		private List<Object> objects;
-#endif
+#pragma warning disable 0649
+		public Object Target;
+		public string Name = "Null";
+#pragma warning restore 0649
+		public int InstanceID { get { return ( Target != null ) ? Target.GetInstanceID() : GetHashCode(); } }
 
-#if UNITY_2019_2_OR_NEWER
-		public bool IsValid { get { return globalObjectIds != null && globalObjectIds.Length > 0; } }
-#else
-		public bool IsValid { get { return objects != null && objects.Count > 0; } }
-#endif
-
-		public void Serialize( List<Object> objects )
+		public BasketWindowEntry( Object target )
 		{
-#if UNITY_2019_2_OR_NEWER
-			Object[] _objects = objects.ToArray();
-			globalObjectIds = new string[_objects.Length];
-			GlobalObjectId[] _globalObjectIds = new GlobalObjectId[_objects.Length];
-			GlobalObjectId.GetGlobalObjectIdsSlow( _objects, _globalObjectIds );
-
-			for( int i = 0; i < _globalObjectIds.Length; i++ )
-				globalObjectIds[i] = _globalObjectIds[i].ToString();
-#else
-			this.objects = objects;
-#endif
+			RefreshTarget( target );
 		}
 
-		public List<Object> Deserialize()
+		public bool RefreshTarget( Object target )
+		{
+			if( target == null || target == Target )
+				return RefreshName();
+
+			Target = target;
+			RefreshName();
+			return true;
+		}
+
+		public bool RefreshName()
+		{
+			if( Target == null )
+				return false;
+
+			string prevName = Name;
+			Name = Target.name;
+			return Name != prevName;
+		}
+	}
+
+	[Serializable]
+	public class BasketWindowRootEntry : BasketWindowEntry
+	{
+		public List<BasketWindowChildEntry> Children = new List<BasketWindowChildEntry>();
+
+		public BasketWindowRootEntry( Object target ) : base( target )
+		{
+		}
+
+		public bool RefreshNamesOfChildren()
+		{
+			bool isDirty = false;
+			foreach( BasketWindowChildEntry child in Children )
+				isDirty |= child.RefreshName();
+
+			return isDirty;
+		}
+
+		public bool RefreshTargetsOfChildren()
 		{
 #if UNITY_2019_2_OR_NEWER
-			if( globalObjectIds == null )
-				return new List<Object>();
+			if( Children == null )
+				return false;
 
-			Object[] result = new Object[globalObjectIds.Length];
-			GlobalObjectId[] _globalObjectIds = new GlobalObjectId[globalObjectIds.Length];
-			for( int i = 0; i < globalObjectIds.Length; i++ )
-				GlobalObjectId.TryParse( globalObjectIds[i], out _globalObjectIds[i] );
+			List<BasketWindowChildEntry> nullEntries = Children.FindAll( ( e ) => e.Target == null );
+			if( nullEntries.Count == 0 )
+				return false;
 
-			GlobalObjectId.GlobalObjectIdentifiersToObjectsSlow( _globalObjectIds, result );
-			return new List<Object>( result );
+			bool isDirty = false;
+			Object[] objects = new Object[nullEntries.Count];
+			GlobalObjectId[] globalObjectIds = new GlobalObjectId[nullEntries.Count];
+			for( int i = 0; i < nullEntries.Count; i++ )
+				GlobalObjectId.TryParse( nullEntries[i].ID, out globalObjectIds[i] );
+
+			GlobalObjectId.GlobalObjectIdentifiersToObjectsSlow( globalObjectIds, objects );
+			for( int i = 0; i < objects.Length; i++ )
+				isDirty |= nullEntries[i].RefreshTarget( objects[i] );
+
+			return isDirty;
 #else
-			return objects ?? new List<Object>();
+			return false;
 #endif
 		}
 	}
 
-	[System.Serializable]
+	[Serializable]
+	public class BasketWindowChildEntry : BasketWindowEntry
+	{
+#if UNITY_2019_2_OR_NEWER // Correctly save scene objects using GlobalObjectId on Unity 2019.2+
+		public string ID;
+#endif
+
+		public BasketWindowChildEntry( Object target ) : base( target )
+		{
+#if UNITY_2019_2_OR_NEWER
+			ID = GlobalObjectId.GetGlobalObjectIdSlow( target ).ToString();
+#endif
+		}
+	}
+
+	[Serializable]
 	public class BasketWindowState : TreeViewState
 	{
 #pragma warning disable 0649
-		public List<Object> objects = new List<Object>();
-		public bool syncSelection = true;
-		public string searchTerm; // Built-in search doesn't preserve row order, so we perform search manually
+		public List<BasketWindowRootEntry> Entries = new List<BasketWindowRootEntry>();
+		public bool SyncSelection = true;
+		public string SearchTerm; // Built-in search doesn't preserve row order, so we perform search manually
 #pragma warning restore 0649
+
+		public int TotalEntryCount
+		{
+			get
+			{
+				int result = Entries.Count;
+				foreach( BasketWindowRootEntry entry in Entries )
+					result += entry.Children.Count;
+
+				return result;
+			}
+		}
+	}
+
+	public class BasketWindowTreeViewItem : TreeViewItem
+	{
+		public readonly BasketWindowEntry Entry;
+		public BasketWindowRootEntry ParentEntry { get { return ( parent is BasketWindowTreeViewItem ) ? ( parent as BasketWindowTreeViewItem ).Entry as BasketWindowRootEntry : null; } }
+		public int Index { get { return parent.children.IndexOf( this ); } }
+
+		public BasketWindowTreeViewItem( BasketWindowEntry entry ) : base()
+		{
+			Entry = entry;
+		}
 	}
 
 	public class BasketWindowDrawer : TreeView
 	{
 		private readonly new BasketWindowState state;
+		private static readonly CompareInfo textComparer = new CultureInfo( "en-US" ).CompareInfo;
 
 		public BasketWindowDrawer( BasketWindowState state ) : base( state )
 		{
@@ -306,28 +448,43 @@ namespace InspectPlusNamespace
 
 		protected override TreeViewItem BuildRoot()
 		{
-			TreeViewItem root = new TreeViewItem() { id = 0, depth = -1, displayName = "Root" };
-
-			CompareInfo textComparer = new CultureInfo( "en-US" ).CompareInfo;
-			CompareOptions textCompareOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
-			bool isSearching = !string.IsNullOrEmpty( state.searchTerm );
-
-			List<Object> objects = state.objects;
-			for( int i = 0; i < objects.Count; i++ )
-			{
-				if( objects[i] && ( !isSearching || textComparer.IndexOf( objects[i].name, state.searchTerm, textCompareOptions ) >= 0 ) )
-					root.AddChild( new TreeViewItem() { id = objects[i].GetInstanceID(), depth = 0, displayName = objects[i].name, icon = AssetPreview.GetMiniThumbnail( objects[i] ) } );
-			}
+			TreeViewItem root = new TreeViewItem() { id = -1, depth = -1, displayName = "Root" };
+			foreach( BasketWindowRootEntry entry in state.Entries )
+				CreateItemForEntryRecursive( entry, root );
 
 			if( !root.hasChildren ) // If we don't create a dummy child, Unity throws an exception
-				root.AddChild( new TreeViewItem() { id = 1, depth = 0, displayName = ( isSearching ? "No matching results..." : "Basket is empty..." ) } );
+				root.AddChild( new TreeViewItem() { id = -2, depth = 0, displayName = string.IsNullOrEmpty( state.SearchTerm ) ? "Basket is empty..." : "No matching results..." } );
 
 			return root;
 		}
 
+		private void CreateItemForEntryRecursive( BasketWindowEntry entry, TreeViewItem parent )
+		{
+			if( string.IsNullOrEmpty( state.SearchTerm ) || textComparer.IndexOf( entry.Name, state.SearchTerm, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace ) >= 0 )
+			{
+				BasketWindowTreeViewItem item = new BasketWindowTreeViewItem( entry )
+				{
+					id = entry.InstanceID,
+					depth = parent.depth + 1,
+					displayName = entry.Name,
+					icon = ( entry.Target != null ) ? AssetPreview.GetMiniThumbnail( entry.Target ) : null,
+				};
+
+				parent.AddChild( item );
+				if( string.IsNullOrEmpty( state.SearchTerm ) )
+					parent = item;
+			}
+
+			if( entry is BasketWindowRootEntry )
+			{
+				foreach( BasketWindowChildEntry childEntry in ( entry as BasketWindowRootEntry ).Children )
+					CreateItemForEntryRecursive( childEntry, parent );
+			}
+		}
+
 		protected override void SelectionChanged( IList<int> selectedIds )
 		{
-			if( !state.syncSelection || selectedIds == null )
+			if( !state.SyncSelection || selectedIds == null )
 				return;
 
 			int[] selectionArray = new int[selectedIds.Count];
@@ -348,7 +505,7 @@ namespace InspectPlusNamespace
 
 		protected override void ContextClicked()
 		{
-			if( state.objects.Count > 0 && HasSelection() && HasFocus() )
+			if( state.Entries.Count > 0 && HasSelection() && HasFocus() )
 			{
 				GenericMenu contextMenu = new GenericMenu();
 				contextMenu.AddItem( new GUIContent( "Remove" ), false, () => RemoveObjects( GetSelection() ) );
@@ -361,7 +518,7 @@ namespace InspectPlusNamespace
 
 		protected override bool CanStartDrag( CanStartDragArgs args )
 		{
-			return state.objects.Count > 0;
+			return state.Entries.Count > 0;
 		}
 
 		protected override void SetupDragAndDrop( SetupDragAndDropArgs args )
@@ -378,11 +535,9 @@ namespace InspectPlusNamespace
 					draggedObjects.Add( obj );
 			}
 
-			if( draggedObjects.Count > 0 )
-			{
-				DragAndDrop.objectReferences = draggedObjects.ToArray();
-				DragAndDrop.StartDrag( draggedObjects.Count > 1 ? "<Multiple>" : draggedObjects[0].name );
-			}
+			DragAndDrop.objectReferences = draggedObjects.ToArray();
+			DragAndDrop.SetGenericData( "BasketIDs", draggedItemIds );
+			DragAndDrop.StartDrag( ( draggedItemIds.Count > 1 ) ? "<Multiple>" : FindEntryWithInstanceID( draggedItemIds[0] ).Name );
 		}
 
 		protected override DragAndDropVisualMode HandleDragAndDrop( DragAndDropArgs args )
@@ -393,14 +548,18 @@ namespace InspectPlusNamespace
 				return DragAndDropVisualMode.None;
 
 			if( args.performDrop )
-				AddObjects( DragAndDrop.objectReferences, ( args.dragAndDropPosition == DragAndDropPosition.OutsideItems ) ? state.objects.Count : args.insertAtIndex );
+			{
+				AddObjects( DragAndDrop.objectReferences, DragAndDrop.GetGenericData( "BasketIDs" ) as IList<int>,
+					( args.parentItem is BasketWindowTreeViewItem ) ? ( args.parentItem as BasketWindowTreeViewItem ).Entry as BasketWindowRootEntry : null,
+					( args.dragAndDropPosition == DragAndDropPosition.OutsideItems ) ? state.Entries.Count : args.insertAtIndex );
+			}
 
 			return DragAndDropVisualMode.Copy;
 		}
 
 		protected override void CommandEventHandling()
 		{
-			if( state.objects.Count > 0 && HasFocus() ) // There may be multiple SearchResultTreeViews. Execute the event only for the currently focused one
+			if( state.Entries.Count > 0 && HasFocus() ) // There may be multiple SearchResultTreeViews. Execute the event only for the currently focused one
 			{
 				Event ev = Event.current;
 				if( ev.type == EventType.ValidateCommand || ev.type == EventType.ExecuteCommand )
@@ -419,32 +578,86 @@ namespace InspectPlusNamespace
 			base.CommandEventHandling();
 		}
 
-		public void AddObjects( Object[] objectsToAdd, int insertIndex )
+		public void AddObjects( Object[] objects, int insertIndex )
 		{
-			List<Object> objects = state.objects;
-			List<int> addedInstanceIDs = new List<int>( objectsToAdd.Length );
-			for( int i = 0; i < objectsToAdd.Length; i++ )
+			AddObjects( objects, null, null, insertIndex );
+		}
+
+		private void AddObjects( Object[] objects, IList<int> instanceIDs, BasketWindowRootEntry targetParentEntry, int insertIndex )
+		{
+			// If we're in search mode, exit search mode to make things easier
+			if( !string.IsNullOrEmpty( state.SearchTerm ) )
 			{
-				if( !objectsToAdd[i] )
-					continue;
-
-				objects.Insert( insertIndex + addedInstanceIDs.Count, objectsToAdd[i] );
-				addedInstanceIDs.Add( objectsToAdd[i].GetInstanceID() );
-			}
-
-			int addedObjectCount = addedInstanceIDs.Count;
-			if( addedObjectCount > 0 )
-			{
-				// Remove duplicates
-				for( int i = objects.Count - 1; i >= 0; i-- )
-				{
-					if( ( i < insertIndex || i >= insertIndex + addedObjectCount ) && System.Array.IndexOf( objectsToAdd, objects[i] ) >= 0 )
-						objects.RemoveAt( i );
-				}
-
-				SetSelection( addedInstanceIDs, TreeViewSelectionOptions.FireSelectionChanged );
+				state.SearchTerm = null;
 				Reload();
 			}
+
+			if( instanceIDs == null )
+				instanceIDs = Array.ConvertAll( objects, ( e ) => ( e != null ) ? e.GetInstanceID() : 0 );
+
+			List<int> addedInstanceIDs = new List<int>();
+			for( int i = instanceIDs.Count - 1; i >= 0; i-- )
+			{
+				if( !addedInstanceIDs.Contains( instanceIDs[i] ) && AddObject( instanceIDs[i], targetParentEntry, ref insertIndex ) != null )
+					addedInstanceIDs.Add( instanceIDs[i] );
+			}
+
+			if( addedInstanceIDs.Count > 0 )
+			{
+				/// Filtering addedInstanceIDs with <see cref="TreeView.FindItem"/> is necessary in the following scenario to avoid an error in <see cref="TreeView.SetSelection"/>:
+				/// 1) Object X from scene Y is added to the basket
+				/// 2) Scene Y is closed
+				/// 3) Object X is drag & dropped to change its sibling index
+				Reload();
+				SetSelection( addedInstanceIDs.FindAll( ( e ) => FindItem( e, rootItem ) != null ), TreeViewSelectionOptions.FireSelectionChanged | TreeViewSelectionOptions.RevealAndFrame );
+			}
+		}
+
+		private BasketWindowEntry AddObject( int instanceID, BasketWindowRootEntry targetParentEntry, ref int insertIndex )
+		{
+			BasketWindowRootEntry parentEntry;
+			BasketWindowEntry entry = FindEntryWithInstanceID( instanceID, out parentEntry );
+			if( entry != null ) // If the object already exists in the BasketWindow
+			{
+				if( parentEntry != targetParentEntry ) // Don't allow changing the entry's parent
+					return entry;
+				else if( parentEntry != null )
+					ReorderEntry( entry as BasketWindowChildEntry, parentEntry.Children, ref insertIndex );
+				else
+					ReorderEntry( entry as BasketWindowRootEntry, state.Entries, ref insertIndex );
+
+				return entry;
+			}
+
+			Object obj = EditorUtility.InstanceIDToObject( instanceID );
+			if( obj == null )
+				return null;
+
+			if( AssetDatabase.Contains( obj ) )
+			{
+				entry = new BasketWindowRootEntry( obj );
+				state.Entries.Insert( ( targetParentEntry == null ) ? insertIndex : state.Entries.IndexOf( targetParentEntry ), entry as BasketWindowRootEntry );
+			}
+			else
+			{
+				string scenePath = AssetDatabase.GetAssetOrScenePath( obj );
+				if( string.IsNullOrEmpty( scenePath ) )
+				{
+					Debug.LogWarning( "Object is neither asset nor scene object: " + obj, obj );
+					return null;
+				}
+
+				// Make sure that scene objects' SceneAsset exists in the list
+				SceneAsset sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>( scenePath );
+				parentEntry = ( FindEntryWithInstanceID( sceneAsset.GetInstanceID() ) as BasketWindowRootEntry ) ?? AddObject( sceneAsset.GetInstanceID(), targetParentEntry, ref insertIndex ) as BasketWindowRootEntry;
+				if( parentEntry == null )
+					return null;
+
+				entry = new BasketWindowChildEntry( obj );
+				parentEntry.Children.Insert( ( parentEntry == targetParentEntry ) ? insertIndex : parentEntry.Children.Count, entry as BasketWindowChildEntry );
+			}
+
+			return entry;
 		}
 
 		private void RemoveObjects( IList<int> instanceIDs )
@@ -452,13 +665,64 @@ namespace InspectPlusNamespace
 			bool removedObjects = false;
 			foreach( int instanceID in instanceIDs )
 			{
-				Object obj = EditorUtility.InstanceIDToObject( instanceID );
-				if( obj && state.objects.Remove( obj ) )
-					removedObjects = true;
+				BasketWindowRootEntry parentEntry;
+				BasketWindowEntry entry = FindEntryWithInstanceID( instanceID, out parentEntry );
+				if( entry is BasketWindowRootEntry )
+					removedObjects |= state.Entries.Remove( entry as BasketWindowRootEntry );
+				else if( entry is BasketWindowChildEntry )
+					removedObjects |= parentEntry.Children.Remove( entry as BasketWindowChildEntry );
 			}
 
 			if( removedObjects )
 				Reload();
+		}
+
+		private void ReorderEntry<T>( T entry, List<T> siblings, ref int newIndex ) where T : BasketWindowEntry
+		{
+			int index = siblings.IndexOf( entry );
+			if( index < newIndex )
+				newIndex--;
+
+			siblings.RemoveAt( index );
+			siblings.Insert( newIndex, entry );
+		}
+
+		private BasketWindowEntry FindEntryWithInstanceID( int instanceID )
+		{
+			BasketWindowRootEntry parentEntry;
+			return FindEntryWithInstanceID( instanceID, out parentEntry );
+		}
+
+		private BasketWindowEntry FindEntryWithInstanceID( int instanceID, out BasketWindowRootEntry parentEntry )
+		{
+			foreach( BasketWindowRootEntry entry in state.Entries )
+			{
+				if( entry.InstanceID == instanceID )
+				{
+					parentEntry = null;
+					return entry;
+				}
+
+				foreach( BasketWindowChildEntry childEntry in entry.Children )
+				{
+					if( childEntry.InstanceID == instanceID )
+					{
+						parentEntry = entry;
+						return childEntry;
+					}
+				}
+			}
+
+			/// Entry couldn't be found. Perhaps its <see cref="BasketWindowEntry.InstanceID"/> has changed because the object was destroyed or restored after the tree was last reloaded.
+			BasketWindowTreeViewItem item = FindItem( instanceID, rootItem ) as BasketWindowTreeViewItem;
+			if( item != null )
+			{
+				parentEntry = item.ParentEntry;
+				return item.Entry;
+			}
+
+			parentEntry = null;
+			return null;
 		}
 	}
 }
