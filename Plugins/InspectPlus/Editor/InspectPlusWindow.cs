@@ -1907,7 +1907,9 @@ namespace InspectPlusNamespace
 
 			if( inspectorAssetDrawer )
 			{
-#if UNITY_2019_2_OR_NEWER
+#if UNITY_2022_2_OR_NEWER
+				inspectorAssetDrawer.DiscardChanges();
+#elif UNITY_2019_2_OR_NEWER
 				// On newer Unity versions, unfortunately the Apply/Revert dialog isn't displayed automatically when we stop inspecting an asset in Inspect+,
 				// so we must show the Apply/Revert dialog manually and as long as user presses Cancel, continue showing the dialog
 				bool applyRevertFinished;
