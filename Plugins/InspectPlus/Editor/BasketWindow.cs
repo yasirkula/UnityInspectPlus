@@ -509,6 +509,12 @@ namespace InspectPlusNamespace
 			{
 				GenericMenu contextMenu = new GenericMenu();
 				contextMenu.AddItem( new GUIContent( "Remove" ), false, () => RemoveObjects( GetSelection() ) );
+				contextMenu.AddSeparator( "" );
+				foreach( string builtInMenuItem in Unsupported.GetSubmenus( "Assets" ) )
+				{
+					if( !builtInMenuItem.StartsWith( "Assets/Create" ) && builtInMenuItem != "Assets/Rename" && builtInMenuItem != "Assets/Delete" )
+						contextMenu.AddItem( new GUIContent( builtInMenuItem ), false, () => EditorApplication.ExecuteMenuItem( builtInMenuItem ) );
+				}
 				contextMenu.ShowAsContext();
 
 				if( Event.current != null && Event.current.type == EventType.ContextClick )
