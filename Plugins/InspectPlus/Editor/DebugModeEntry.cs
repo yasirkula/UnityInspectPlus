@@ -22,6 +22,7 @@ namespace InspectPlusNamespace
 				else
 				{
 					Obj = null;
+					forceShowNestedVariables = false;
 					PoolLists();
 				}
 			}
@@ -34,6 +35,7 @@ namespace InspectPlusNamespace
 
 		protected DebugModeEnumerableEntry enumerableRoot;
 		protected List<DebugModeEntry> variables;
+		private bool forceShowNestedVariables;
 
 		private static readonly Stack<List<DebugModeEntry>> pool = new Stack<List<DebugModeEntry>>( 32 );
 
@@ -106,8 +108,11 @@ namespace InspectPlusNamespace
 					if( !flattenChildren )
 						EditorGUI.indentLevel++;
 
-					if( parent == null || !DrawValueOnGUI() )
+					if( parent == null || !DrawValueOnGUI() || forceShowNestedVariables )
 					{
+						if( forceShowNestedVariables )
+							EditorGUI.indentLevel++;
+
 						if( enumerableRoot != null )
 							enumerableRoot.DrawOnGUI( variables == null ); // If only the enumerable elements exist, flatten them
 
@@ -116,6 +121,9 @@ namespace InspectPlusNamespace
 							for( int i = 0; i < variables.Count; i++ )
 								variables[i].DrawOnGUI();
 						}
+
+						if( forceShowNestedVariables )
+							EditorGUI.indentLevel--;
 					}
 
 					if( !flattenChildren )
@@ -150,7 +158,12 @@ namespace InspectPlusNamespace
 				if( typeof( Object ).IsAssignableFrom( Variable.type ) && Variable.type.IsAssignableFrom( objType ) )
 					objType = Variable.type;
 
-				newValue = EditorGUILayout.ObjectField( GUIContent.none, (Object) Obj, objType, true );
+				Rect pickerRect = EditorGUILayout.GetControlRect( false, EditorGUIUtility.singleLineHeight );
+				float indentation = EditorGUI.IndentedRect( pickerRect ).x - pickerRect.x;
+				forceShowNestedVariables = EditorGUI.Foldout( new Rect( pickerRect.x, pickerRect.y, pickerRect.height + indentation, pickerRect.height ), forceShowNestedVariables, GUIContent.none, true );
+
+				pickerRect.xMin += pickerRect.height + 2f;
+				newValue = EditorGUI.ObjectField( pickerRect, (Object) Obj, objType, true );
 
 				Event ev = Event.current;
 				if( ev.type == EventType.MouseDown && ev.button == 1 && GUILayoutUtility.GetLastRect().Contains( ev.mousePosition ) )
@@ -239,6 +252,9 @@ namespace InspectPlusNamespace
 
 					_parent = _parent.parent;
 				}
+
+				if( !ReferenceEquals( Obj, newValue ) && newValue != null && Obj.GetType() != newValue.GetType() )
+					PoolLists();
 
 				Obj = newValue;
 				Variable.Set( parent != null ? parent.Obj : null, newValue );
