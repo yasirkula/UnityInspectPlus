@@ -240,6 +240,7 @@ namespace InspectPlusNamespace
 
 			if( EditorGUI.EndChangeCheck() )
 			{
+				Object modifiedPrefabInstance = null;
 				DebugModeEntry _parent = parent;
 				while( _parent != null )
 				{
@@ -248,6 +249,15 @@ namespace InspectPlusNamespace
 						Undo.RecordObject( (Object) _parent.Obj, "Change Value" );
 						if( _parent.Obj is Component )
 							Undo.RecordObject( ( (Component) _parent.Obj ).gameObject, "Change Value" ); // Required for at least name and tag properties
+
+#if UNITY_2018_3_OR_NEWER
+						if( PrefabUtility.IsPartOfPrefabInstance( (Object) _parent.Obj ) )
+#else
+						if( PrefabUtility.GetPrefabParent( (Object) _parent.Obj ) )
+#endif
+						{
+							modifiedPrefabInstance = _parent.Obj as Object;
+						}
 
 						break;
 					}
@@ -261,6 +271,9 @@ namespace InspectPlusNamespace
 				Obj = newValue;
 				Variable.Set( parent != null ? parent.Obj : null, newValue );
 				Refresh();
+
+				if( modifiedPrefabInstance != null )
+					PrefabUtility.RecordPrefabInstancePropertyModifications( (Object) _parent.Obj ); // Required for prefab modifications (without this, Redo doesn't work for prefab variables)
 
 				GUIUtility.ExitGUI();
 			}
