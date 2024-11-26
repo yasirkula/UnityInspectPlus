@@ -186,6 +186,8 @@ namespace InspectPlusNamespace
 #endif
 			else if( Obj is Vector4 )
 				newValue = EditorGUILayout.Vector4Field( GUIContent.none, (Vector4) Obj );
+			else if( Obj is Quaternion )
+				newValue = Quaternion.Euler( EditorGUILayout.Vector3Field( GUIContent.none, ( (Quaternion) Obj ).eulerAngles ) ); // Edit Quaternions as Euler angles
 			else if( Obj is Enum )
 				newValue = EditorGUILayout.EnumPopup( GUIContent.none, (Enum) Obj );
 			else if( Obj is Color )
