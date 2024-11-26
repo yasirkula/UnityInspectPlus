@@ -935,7 +935,7 @@ namespace InspectPlusNamespace
 				// Alternative: "UnityEditor.SceneHierarchyWindow"
 				tabTitle.image = EditorGUIUtility.IconContent( "ViewToolOrbit" ).image;
 			}
-			else if( obj is StaticTypeWrapper )
+			else if( obj is TypeWrapper )
 				tabTitle.image = EditorGUIUtility.IconContent( "boo Script Icon" ).image;
 
 			titleContent = tabTitle;

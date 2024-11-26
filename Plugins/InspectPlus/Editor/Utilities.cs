@@ -68,8 +68,8 @@ namespace InspectPlusNamespace
 		// Get filtered variables for an object
 		public static VariableGetterHolder[] GetFilteredVariablesForObject( object obj )
 		{
-			if( obj is StaticTypeWrapper )
-				return GetFilteredVariablesForType( ( (StaticTypeWrapper) obj ).Type, VARIABLE_BINDING_FLAGS & ~BindingFlags.Instance );
+			if( obj is TypeWrapper )
+				return GetFilteredVariablesForType( ( (TypeWrapper) obj ).Type, VARIABLE_BINDING_FLAGS & ~BindingFlags.Instance );
 			else
 				return GetFilteredVariablesForType( obj.GetType() );
 		}

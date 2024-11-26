@@ -3,16 +3,16 @@ using UnityEngine;
 
 namespace InspectPlusNamespace
 {
-	public class StaticTypeWrapper : ScriptableObject, ISerializationCallbackReceiver
+	public class TypeWrapper : ScriptableObject, ISerializationCallbackReceiver
 	{
 		public Type Type { get; private set; }
 
 		[SerializeField, HideInInspector]
 		private string typeName;
 
-		public static StaticTypeWrapper Create( Type type )
+		public static TypeWrapper Create( Type type )
 		{
-			StaticTypeWrapper result = CreateInstance<StaticTypeWrapper>();
+			TypeWrapper result = CreateInstance<TypeWrapper>();
 			result.name = type.Name + " Statics";
 			result.Type = type;
 			return result;

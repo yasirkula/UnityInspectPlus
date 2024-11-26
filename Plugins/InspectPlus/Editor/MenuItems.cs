@@ -23,8 +23,8 @@ namespace InspectPlusNamespace
 			InspectPlusWindow.GetNewWindow();
 		}
 
-		[MenuItem( "Window/Inspect+/Inspect Static Type", priority = 100 )]
-		private static void InspectStaticType()
+		[MenuItem( "Window/Inspect+/Inspect Type", priority = 125 )]
+		private static void InspectType()
 		{
 			StringInputDialog.Show( "Enter Type name:", "", ( typeName ) =>
 			{
@@ -33,7 +33,7 @@ namespace InspectPlusNamespace
 
 				Type type = Utilities.GetType( typeName );
 				if( type != null )
-					InspectPlusWindow.Inspect( StaticTypeWrapper.Create( type ), false, true );
+					InspectPlusWindow.Inspect( TypeWrapper.Create( type ), false, true );
 				else
 					Debug.LogError( "Type not found: " + typeName );
 			} );
