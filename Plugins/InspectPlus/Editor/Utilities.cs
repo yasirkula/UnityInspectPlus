@@ -75,10 +75,15 @@ namespace InspectPlusNamespace
 		}
 
 		// Get filtered variables for a type
-		public static VariableGetterHolder[] GetFilteredVariablesForType( Type type, BindingFlags bindingFlags = VARIABLE_BINDING_FLAGS )
+		public static VariableGetterHolder[] GetFilteredVariablesForType( Type type )
+		{
+			return GetFilteredVariablesForType( type, VARIABLE_BINDING_FLAGS );
+		}
+
+		private static VariableGetterHolder[] GetFilteredVariablesForType( Type type, BindingFlags bindingFlags )
 		{
 			VariableGetterHolder[] result;
-			if( typeToVariables.TryGetValue( type, out result ) )
+			if( bindingFlags == VARIABLE_BINDING_FLAGS && typeToVariables.TryGetValue( type, out result ) )
 				return result;
 
 			validVariables.Clear();
@@ -222,7 +227,8 @@ namespace InspectPlusNamespace
 			result = validVariables.ToArray();
 
 			// Cache the filtered variables
-			typeToVariables.Add( type, result );
+			if( bindingFlags == VARIABLE_BINDING_FLAGS )
+				typeToVariables.Add( type, result );
 
 			return result;
 		}
