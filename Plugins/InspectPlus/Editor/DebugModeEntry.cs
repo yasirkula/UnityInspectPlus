@@ -158,10 +158,12 @@ namespace InspectPlusNamespace
 				if( typeof( Object ).IsAssignableFrom( Variable.type ) && Variable.type.IsAssignableFrom( objType ) )
 					objType = Variable.type;
 
+				EditorGUI.EndChangeCheck(); /// Toggling <see cref="forceShowNestedVariables"/> shouldn't count as a change
 				Rect pickerRect = EditorGUILayout.GetControlRect( false, EditorGUIUtility.singleLineHeight );
 				float indentation = EditorGUI.IndentedRect( pickerRect ).x - pickerRect.x;
 				forceShowNestedVariables = EditorGUI.Foldout( new Rect( pickerRect.x, pickerRect.y, pickerRect.height + indentation, pickerRect.height ), forceShowNestedVariables, GUIContent.none, true );
 
+				EditorGUI.BeginChangeCheck();
 				pickerRect.xMin += pickerRect.height + 2f;
 				newValue = EditorGUI.ObjectField( pickerRect, (Object) Obj, objType, true );
 
