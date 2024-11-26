@@ -1,9 +1,11 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
 using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
+using Object = UnityEngine.Object;
 
 namespace InspectPlusNamespace
 {
@@ -19,6 +21,22 @@ namespace InspectPlusNamespace
 		private static void ShowNewWindow()
 		{
 			InspectPlusWindow.GetNewWindow();
+		}
+
+		[MenuItem( "Window/Inspect+/Inspect Static Type", priority = 100 )]
+		private static void InspectStaticType()
+		{
+			StringInputDialog.Show( "Enter Type name:", "", ( typeName ) =>
+			{
+				if( string.IsNullOrEmpty( typeName ) )
+					return;
+
+				Type type = Utilities.GetType( typeName );
+				if( type != null )
+					InspectPlusWindow.Inspect( StaticTypeWrapper.Create( type ), false, true );
+				else
+					Debug.LogError( "Type not found: " + typeName );
+			} );
 		}
 
 		[MenuItem( "Window/Inspect+/Basket (Active Window)", priority = 200 )]

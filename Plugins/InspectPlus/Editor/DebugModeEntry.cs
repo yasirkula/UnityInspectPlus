@@ -78,7 +78,7 @@ namespace InspectPlusNamespace
 					{
 						if( variables == null )
 						{
-							VariableGetterHolder[] childGetters = Utilities.GetFilteredVariablesForType( Obj.GetType() );
+							VariableGetterHolder[] childGetters = Utilities.GetFilteredVariablesForObject( Obj );
 							variables = PopList( childGetters.Length );
 							for( int i = 0; i < childGetters.Length; i++ )
 								variables.Add( new DebugModeEntry( this ) { Variable = childGetters[i] } );

@@ -659,7 +659,7 @@ namespace InspectPlusNamespace
 		#endregion
 
 		#region Inspect Functions
-		public static void Inspect( Object[] objs, bool newWindow )
+		public static void Inspect( Object[] objs, bool newWindow, bool? debugModeOverride = null )
 		{
 			for( int i = 0; i < objs.Length; i++ )
 			{
@@ -674,11 +674,11 @@ namespace InspectPlusNamespace
 				}
 
 				if( !alreadyInspected )
-					Inspect( objs[i], newWindow );
+					Inspect( objs[i], newWindow, debugModeOverride );
 			}
 		}
 
-		public static void Inspect( Object obj, bool newWindow )
+		public static void Inspect( Object obj, bool newWindow, bool? debugModeOverride = null )
 		{
 			if( !obj )
 				return;
@@ -714,6 +714,7 @@ namespace InspectPlusNamespace
 
 							newTab.InspectInternal( obj, true );
 							newTab.ShowTab();
+							newTab.debugMode = debugModeOverride ?? false;
 
 							return;
 						}
@@ -732,6 +733,9 @@ namespace InspectPlusNamespace
 			}
 			else
 				GetDefaultWindow().InspectInternal( obj, true );
+
+			if( debugModeOverride.HasValue )
+				mainWindow.debugMode = debugModeOverride.Value;
 		}
 
 		private void InspectInternal( Object obj, bool addHistoryEntry )
@@ -931,6 +935,8 @@ namespace InspectPlusNamespace
 				// Alternative: "UnityEditor.SceneHierarchyWindow"
 				tabTitle.image = EditorGUIUtility.IconContent( "ViewToolOrbit" ).image;
 			}
+			else if( obj is StaticTypeWrapper )
+				tabTitle.image = EditorGUIUtility.IconContent( "boo Script Icon" ).image;
 
 			titleContent = tabTitle;
 		}

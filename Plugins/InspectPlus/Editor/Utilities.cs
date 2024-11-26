@@ -65,8 +65,17 @@ namespace InspectPlusNamespace
 			}
 		}
 
+		// Get filtered variables for an object
+		public static VariableGetterHolder[] GetFilteredVariablesForObject( object obj )
+		{
+			if( obj is StaticTypeWrapper )
+				return GetFilteredVariablesForType( ( (StaticTypeWrapper) obj ).Type, VARIABLE_BINDING_FLAGS & ~BindingFlags.Instance );
+			else
+				return GetFilteredVariablesForType( obj.GetType() );
+		}
+
 		// Get filtered variables for a type
-		public static VariableGetterHolder[] GetFilteredVariablesForType( Type type )
+		public static VariableGetterHolder[] GetFilteredVariablesForType( Type type, BindingFlags bindingFlags = VARIABLE_BINDING_FLAGS )
 		{
 			VariableGetterHolder[] result;
 			if( typeToVariables.TryGetValue( type, out result ) )
@@ -78,7 +87,7 @@ namespace InspectPlusNamespace
 			Type currType = type;
 			while( currType != typeof( object ) )
 			{
-				FieldInfo[] fields = currType.GetFields( VARIABLE_BINDING_FLAGS );
+				FieldInfo[] fields = currType.GetFields( bindingFlags );
 				for( int i = 0; i < fields.Length; i++ )
 				{
 					FieldInfo field = fields[i];
@@ -108,7 +117,7 @@ namespace InspectPlusNamespace
 			currType = type;
 			while( currType != typeof( object ) )
 			{
-				PropertyInfo[] properties = currType.GetProperties( VARIABLE_BINDING_FLAGS );
+				PropertyInfo[] properties = currType.GetProperties( bindingFlags );
 				for( int i = 0; i < properties.Length; i++ )
 				{
 					PropertyInfo property = properties[i];
@@ -169,7 +178,7 @@ namespace InspectPlusNamespace
 			currType = type;
 			while( currType != typeof( object ) )
 			{
-				MethodInfo[] methods = currType.GetMethods( VARIABLE_BINDING_FLAGS );
+				MethodInfo[] methods = currType.GetMethods( bindingFlags );
 				for( int i = 0; i < methods.Length; i++ )
 				{
 					MethodInfo method = methods[i];
@@ -222,6 +231,48 @@ namespace InspectPlusNamespace
 		public static bool IsPrimitiveUnityType( this Type type )
 		{
 			return type.IsPrimitive || primitiveUnityTypes.Contains( type ) || type.IsEnum;
+		}
+
+		/// <summary>
+		/// Converts <paramref name="typeName"/> to <see cref="Type"/>.
+		/// </summary>
+		/// <param name="typeName">Case insensitive. Can be <see cref="Type.Name"/>, <see cref="Type.FullName"/> or <see cref="Type.AssemblyQualifiedName"/>.</param>
+		public static Type GetType( string typeName )
+		{
+			try
+			{
+				/// Try <see cref="Type.GetType"/> first
+				Type type = Type.GetType( typeName, false, true );
+				if( type != null )
+					return type;
+
+				bool isFullNameProvided = typeName.IndexOf( '.' ) >= 0;
+				if( !isFullNameProvided )
+				{
+					// Try loading the type from UnityEngine namespace
+					type = typeof( Transform ).Assembly.GetType( "UnityEngine." + typeName, false, true );
+					if( type != null )
+						return type;
+				}
+
+				// Search all assemblies for the type
+				foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+				{
+					try
+					{
+						foreach( Type t in assembly.GetTypes() )
+						{
+							if( ( isFullNameProvided ? t.FullName : t.Name ).Equals( typeName, StringComparison.OrdinalIgnoreCase ) )
+								return t;
+						}
+					}
+					catch { }
+				}
+			}
+			catch { }
+
+			// The type just couldn't be found...
+			return null;
 		}
 
 		// Get <get> and <set> functions for a field
