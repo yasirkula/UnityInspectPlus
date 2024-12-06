@@ -48,6 +48,9 @@ There are 4 ways to install this plugin:
 ![screenshot](Images/DebugMode.png)
 
 - Select **Window/Inspect+/Inspect Type** to inspect a Type's static variables (e.g. *UnityEngine.Time*)
+
+![screenshot](Images/InspectType.gif)
+
 - You can right click an object in Hierarchy and select the **Isolated Hierarchy** option to open a Hierarchy window that displays only that object's children
 
 ![screenshot](Images/IsolatedHierarchy.png)
