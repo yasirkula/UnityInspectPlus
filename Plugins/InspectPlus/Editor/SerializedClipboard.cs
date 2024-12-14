@@ -896,7 +896,11 @@ namespace InspectPlusNamespace
 					// Search all objects of specified type
 					if( serializedType.Type != null )
 					{
+#if UNITY_2022_3_OR_NEWER
+						Object[] objects = Object.FindObjectsByType( serializedType.Type, FindObjectsSortMode.None );
+#else
 						Object[] objects = Object.FindObjectsOfType( serializedType.Type );
+#endif
 						for( int i = 0; i < objects.Length; i++ )
 						{
 							if( objects[i].name == ObjectName )
