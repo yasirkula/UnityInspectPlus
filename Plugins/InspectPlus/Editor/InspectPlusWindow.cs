@@ -936,7 +936,11 @@ namespace InspectPlusNamespace
 				tabTitle.image = EditorGUIUtility.IconContent( "ViewToolOrbit" ).image;
 			}
 			else if( obj is TypeWrapper )
+			{
+				Type wrappedType = ( obj as TypeWrapper ).Type;
+				tabTitle.tooltip = ( wrappedType != null ) ? wrappedType.FullName : "";
 				tabTitle.image = EditorGUIUtility.IconContent( "boo Script Icon" ).image;
+			}
 
 			titleContent = tabTitle;
 		}
