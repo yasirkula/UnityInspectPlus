@@ -326,10 +326,6 @@ namespace InspectPlusNamespace
 		{
 			shouldRepaint = true;
 			debugModeRefreshTime = 0f;
-
-			// Inspected object was deleted but now this deletion is undo'ed
-			if( inspectorDrawerCount == 0 && mainObject )
-				pendingInspectTarget = mainObject;
 		}
 
 #if UNITY_2017_2_OR_NEWER
@@ -956,6 +952,13 @@ namespace InspectPlusNamespace
 					EditorGUIUtility.PingObject( pendingInspectTarget );
 
 				pendingInspectTarget = null;
+			}
+			else if( !ReferenceEquals( mainObject, null ) && ( inspectorDrawerCount == 0 || mainObject == null ) )
+			{
+				/// Object can be fake-null after entering/exiting play mode or deleting it and then undoing it. Re-fetching the Object via <see cref="EditorUtility.InstanceIDToObject"/> seems to fix the issue.
+				Object _mainObject = EditorUtility.InstanceIDToObject( mainObject.GetInstanceID() );
+				if( _mainObject != null )
+					InspectInternal( _mainObject, false );
 			}
 
 			// Regularly check if components of the inspected GameObject has changed
@@ -1838,7 +1841,7 @@ namespace InspectPlusNamespace
 			if( inspectorDrawerCount < inspectorDrawers.Count )
 			{
 				Editor editor = inspectorDrawers[inspectorDrawerCount];
-				if( editor && editor.target == obj )
+				if( editor && editor.target == obj && editor.target != null ) // Editor.target can be null after entering/exiting play mode or deleting the target and then undoing it
 					inspectorDrawerCount++;
 				else
 				{
