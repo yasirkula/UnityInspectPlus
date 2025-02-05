@@ -43,7 +43,7 @@ namespace InspectPlusNamespace
 			if( !initialized )
 				GUILayout.BeginVertical();
 
-			GUILayout.Label( description );
+			GUILayout.Label( description, EditorStyles.wordWrappedLabel );
 
 			GUI.SetNextControlName( "InputD" );
 			OnInputGUI();
