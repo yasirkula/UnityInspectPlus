@@ -15,6 +15,7 @@ namespace InspectPlusNamespace
 			TypeWrapper result = CreateInstance<TypeWrapper>();
 			result.name = type.Name + " Statics";
 			result.Type = type;
+			result.hideFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
 			return result;
 		}
 
