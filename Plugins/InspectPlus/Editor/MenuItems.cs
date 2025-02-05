@@ -31,9 +31,25 @@ namespace InspectPlusNamespace
 				if( string.IsNullOrEmpty( typeName ) )
 					return;
 
-				Type type = Utilities.GetType( typeName );
+				// If typeName ends with '*', the first instance of the Type will be inspected. Otherwise, the Type's static variables will be inspected
+				Type type = Utilities.GetType( typeName.EndsWith( "*" ) ? typeName.Substring( 0, typeName.Length - 1 ) : typeName );
 				if( type != null )
-					InspectPlusWindow.Inspect( TypeWrapper.Create( type ), false, true );
+				{
+					if( !typeName.EndsWith( "*" ) )
+						InspectPlusWindow.Inspect( TypeWrapper.Create( type ), false, true );
+					else
+					{
+#if UNITY_2022_3_OR_NEWER
+						Object instance = Object.FindAnyObjectByType( type, FindObjectsInactive.Include );
+#else
+						Object instance = Object.FindObjectOfType( type );
+#endif
+						if( instance != null )
+							InspectPlusWindow.Inspect( instance, false );
+						else
+							Debug.LogError( "Instance of Type not found: " + type.FullName );
+					}
+				}
 				else
 					Debug.LogError( "Type not found: " + typeName );
 			} );

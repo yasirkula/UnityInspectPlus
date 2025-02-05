@@ -47,7 +47,7 @@ There are 4 ways to install this plugin:
 
 ![screenshot](Images/DebugMode.png)
 
-- Select **Window/Inspect+/Inspect Type** to inspect a Type's static variables (e.g. *UnityEngine.Time*)
+- Select **Window/Inspect+/Inspect Type** to inspect a Type's static variables (e.g. *UnityEngine.Time*) (tip: if you put an '\*' at the end of the type name, the first Object instance of the given Type will be inspected instead)
 
 ![screenshot](Images/InspectType.gif)
 
