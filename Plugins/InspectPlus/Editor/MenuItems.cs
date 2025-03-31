@@ -116,6 +116,7 @@ namespace InspectPlusNamespace
 			return Selection.objects.Length > 0;
 		}
 
+		[MenuItem( "CONTEXT/Object/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/Component/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/AssetImporter/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
@@ -125,6 +126,7 @@ namespace InspectPlusNamespace
 			InspectPlusWindow.Inspect( command.context, false );
 		}
 
+		[MenuItem( "CONTEXT/Object/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/Component/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/AssetImporter/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
@@ -138,6 +140,7 @@ namespace InspectPlusNamespace
 		#region Add to Basket Buttons
 		[MenuItem( "GameObject/Inspect+/Add to Basket", priority = 49 )]
 		[MenuItem( "Assets/Inspect+/Add to Basket", priority = 1500 )]
+		[MenuItem( "CONTEXT/Object/Inspect+/Add to Basket", priority = 1475 )]
 		[MenuItem( "CONTEXT/Component/Inspect+/Add to Basket", priority = 1475 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Add to Basket", priority = 1475 )]
 		[MenuItem( "CONTEXT/AssetImporter/Inspect+/Add to Basket", priority = 1475 )]
