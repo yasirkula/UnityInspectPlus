@@ -24,7 +24,6 @@ namespace InspectPlusNamespace
 
 			titleContent = GUIContent.none;
 			minSize = new Vector2( 100f, 50f );
-			position = new Rect( new Vector2( -9999f, -9999f ), new Vector2( 350f, 9999f ) );
 
 			ShowAuxWindow();
 			Focus();
@@ -68,8 +67,7 @@ namespace InspectPlusNamespace
 				float preferredHeight = GUILayoutUtility.GetLastRect().height;
 				if( preferredHeight > 10f )
 				{
-					Vector2 size = new Vector2( position.width, preferredHeight + 15f );
-					position = Utilities.GetScreenFittedRect( new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ) - size * 0.5f, size ) );
+					position = new Rect( position.position, new Vector2( position.width, preferredHeight + 15f ) );
 					initialized = true;
 
 					EditorGUI.FocusTextInControl( "InputD" );
