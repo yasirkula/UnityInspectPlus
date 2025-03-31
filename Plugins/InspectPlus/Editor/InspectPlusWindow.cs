@@ -1,6 +1,4 @@
-﻿//#define APPLY_HORIZONTAL_PADDING
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
@@ -31,9 +29,6 @@ namespace InspectPlusNamespace
 		private const float PREVIEW_MIN_HEIGHT = 130f;
 		private const float PREVIEW_COLLAPSE_HEIGHT = PREVIEW_MIN_HEIGHT * 0.5f;
 		private const string PREVIEW_HEIGHT_PREF = "IPPreviewHeight";
-#if APPLY_HORIZONTAL_PADDING
-		private const float INSPECTOR_HORIZONTAL_PADDING = 5f;
-#endif
 
 		private static readonly List<InspectPlusWindow> windows = new List<InspectPlusWindow>( 8 );
 
@@ -1064,14 +1059,7 @@ namespace InspectPlusNamespace
 			}
 
 			inspectorScrollPosition = EditorGUILayout.BeginScrollView( inspectorScrollPosition );
-
 			GUILayout.BeginVertical(); // Needed on 2019.2 or newer for material Inspectors to be drawn correctly. Problematic line here: https://github.com/Unity-Technologies/UnityCsReference/blob/befa918e671668a919f25a5d57d521072d79f560/Editor/Mono/Inspector/MaterialEditor.cs#L1659
-
-#if APPLY_HORIZONTAL_PADDING
-			GUILayout.BeginHorizontal();
-			GUILayout.Space( INSPECTOR_HORIZONTAL_PADDING );
-			GUILayout.BeginVertical();
-#endif
 
 			if( debugMode )
 			{
@@ -1192,14 +1180,7 @@ namespace InspectPlusNamespace
 				EditorGUIUtility.labelWidth = originalLabelWidth;
 			}
 
-#if APPLY_HORIZONTAL_PADDING
 			GUILayout.EndVertical();
-			GUILayout.Space( INSPECTOR_HORIZONTAL_PADDING );
-			GUILayout.EndHorizontal();
-#endif
-
-			GUILayout.EndVertical();
-
 			EditorGUILayout.EndScrollView();
 
 			if( !debugMode )

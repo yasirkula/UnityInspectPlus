@@ -424,7 +424,6 @@ namespace InspectPlusNamespace
 	public class BasketWindowDrawer : TreeView
 	{
 		private readonly new BasketWindowState state;
-		private static readonly CompareInfo textComparer = new CultureInfo( "en-US" ).CompareInfo;
 
 		public BasketWindowDrawer( BasketWindowState state ) : base( state )
 		{
@@ -446,7 +445,7 @@ namespace InspectPlusNamespace
 
 		private void CreateItemForEntryRecursive( BasketWindowEntry entry, TreeViewItem parent )
 		{
-			if( string.IsNullOrEmpty( state.SearchTerm ) || textComparer.IndexOf( entry.Name, state.SearchTerm, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace ) >= 0 )
+			if( string.IsNullOrEmpty( state.SearchTerm ) || entry.Name.ContainsIgnoreCase( state.SearchTerm ) )
 			{
 				BasketWindowTreeViewItem item = new BasketWindowTreeViewItem( entry )
 				{

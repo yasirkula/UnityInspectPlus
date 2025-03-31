@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -49,6 +50,7 @@ namespace InspectPlusNamespace
 		private static readonly List<VariableGetterHolder> validVariables = new List<VariableGetterHolder>( 32 );
 		private static readonly Dictionary<Type, VariableGetterHolder[]> typeToVariables = new Dictionary<Type, VariableGetterHolder[]>( 1024 );
 		private static readonly string reflectionNameSpace = typeof( Assembly ).Namespace;
+		private static readonly CompareInfo caseInsensitiveComparer = new CultureInfo( "en-US" ).CompareInfo;
 		public static readonly StringBuilder stringBuilder = new StringBuilder( 256 );
 
 		private static MethodInfo screenFittedRectGetter;
@@ -80,6 +82,11 @@ namespace InspectPlusNamespace
 				else
 					return string.Concat( obj.name, " (", obj.GetType().Name, ")" );
 			}
+		}
+
+		public static bool ContainsIgnoreCase( this string source, string value )
+		{
+			return caseInsensitiveComparer.IndexOf( source, value, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace ) >= 0;
 		}
 
 		// Get filtered variables for an object

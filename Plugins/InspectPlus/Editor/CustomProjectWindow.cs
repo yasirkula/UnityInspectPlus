@@ -130,8 +130,6 @@ namespace InspectPlusNamespace
 		private readonly Dictionary<int, CacheEntry> childAssetsCache = new Dictionary<int, CacheEntry>( 256 );
 
 		private readonly MethodInfo instanceIDFromGUID;
-		private readonly CompareInfo textComparer;
-		private readonly CompareOptions textCompareOptions;
 
 		private bool isSearching;
 
@@ -142,8 +140,6 @@ namespace InspectPlusNamespace
 		{
 			this.rootDirectory = rootDirectory;
 			instanceIDFromGUID = typeof( AssetDatabase ).GetMethod( "GetInstanceIDFromGUID", BindingFlags.NonPublic | BindingFlags.Static );
-			textComparer = new CultureInfo( "en-US" ).CompareInfo;
-			textCompareOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
 
 			Reload();
 		}
@@ -185,7 +181,7 @@ namespace InspectPlusNamespace
 				int instanceID = GetInstanceIDFromPath( entry );
 				string displayName = Path.GetFileNameWithoutExtension( entry );
 				TreeViewItem item = null;
-				if( !isSearching || textComparer.IndexOf( displayName, searchString, textCompareOptions ) >= 0 )
+				if( !isSearching || displayName.ContainsIgnoreCase( searchString ) )
 				{
 					item = new TreeViewItem( instanceID, !isSearching ? depth : 0, displayName ) { icon = AssetDatabase.GetCachedIcon( entry ) as Texture2D };
 					rows.Add( item );
@@ -222,7 +218,7 @@ namespace InspectPlusNamespace
 							{
 								for( int j = 0; j < childAssets.Length; j++ )
 								{
-									if( textComparer.IndexOf( childNames[j], searchString, textCompareOptions ) >= 0 )
+									if( childNames[j].ContainsIgnoreCase( searchString ) )
 										rows.Add( new TreeViewItem( childAssets[j], 0, childNames[j] ) { icon = childThumbnails[j] } );
 								}
 							}

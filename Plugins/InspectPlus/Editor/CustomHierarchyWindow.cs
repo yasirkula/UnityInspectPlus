@@ -159,9 +159,6 @@ namespace InspectPlusNamespace
 
 		private readonly List<TreeViewItem> rows = new List<TreeViewItem>( 100 );
 
-		private readonly CompareInfo textComparer;
-		private readonly CompareOptions textCompareOptions;
-
 		private bool isSearching;
 
 		public HierarchyWindowSelectionChangedDelegate OnSelectionChanged;
@@ -172,8 +169,6 @@ namespace InspectPlusNamespace
 		public CustomHierarchyWindowDrawer( TreeViewState state, Transform rootTransform ) : base( state )
 		{
 			rootGameObjectID = rootTransform.gameObject.GetInstanceID();
-			textComparer = new CultureInfo( "en-US" ).CompareInfo;
-			textCompareOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
 			selectedIconGetter = typeof( EditorUtility ).GetMethod( "GetIconInActiveState", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
 
 			Reload();
@@ -216,7 +211,7 @@ namespace InspectPlusNamespace
 				int instanceID = child.gameObject.GetInstanceID();
 				string displayName = child.name;
 				TreeViewItem item = null;
-				if( !isSearching || textComparer.IndexOf( displayName, searchString, textCompareOptions ) >= 0 )
+				if( !isSearching || displayName.ContainsIgnoreCase( searchString ) )
 				{
 					item = new TreeViewItem( instanceID, !isSearching ? depth : 0, displayName );
 					item.icon = PrefabUtility.GetIconForGameObject( child.gameObject );

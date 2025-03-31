@@ -10,15 +10,17 @@ namespace InspectPlusNamespace
 		private string description;
 		protected T value;
 		private Action<T> onResult;
+		private Action onCancel;
 
 		private bool initialized;
 		private Vector2 scrollPosition;
 
-		protected void Initialize( string description, T value, Action<T> onResult )
+		protected void Initialize( string description, T value, Action<T> onResult, Action onCancel )
 		{
 			this.description = description;
 			this.value = value;
 			this.onResult = onResult;
+			this.onCancel = onCancel;
 
 			titleContent = GUIContent.none;
 			minSize = new Vector2( 100f, 50f );
@@ -30,7 +32,9 @@ namespace InspectPlusNamespace
 
 		protected void OnDisable()
 		{
-			SendResult( default( T ) );
+			onCancel?.Invoke();
+			onResult = null;
+			onCancel = null;
 		}
 
 		private void OnGUI()
@@ -50,7 +54,10 @@ namespace InspectPlusNamespace
 
 			if( GUILayout.Button( "OK" ) || inputSubmitted )
 			{
-				SendResult( value );
+				onResult?.Invoke( value );
+				onResult = null;
+				onCancel = null;
+
 				Close();
 			}
 
@@ -74,22 +81,13 @@ namespace InspectPlusNamespace
 		}
 
 		protected abstract void OnInputGUI();
-
-		private void SendResult( T value )
-		{
-			if( onResult != null )
-			{
-				onResult( value );
-				onResult = null;
-			}
-		}
 	}
 
 	public class StringInputDialog : InputDialog<string>
 	{
-		public static void Show( string description, string value, Action<string> onResult )
+		public static void Show( string description, string value, Action<string> onResult, Action onCancel = null )
 		{
-			CreateInstance<StringInputDialog>().Initialize( description, value, onResult );
+			CreateInstance<StringInputDialog>().Initialize( description, value, onResult, onCancel );
 		}
 
 		protected override void OnInputGUI()
