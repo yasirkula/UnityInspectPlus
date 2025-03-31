@@ -120,12 +120,10 @@ namespace InspectPlusNamespace
 			public static implicit operator VectorClipboard( Bounds b ) { return new VectorClipboard( b.center.x, b.center.y, b.center.z, b.extents.x, b.extents.y, b.extents.z ); }
 			public static implicit operator VectorClipboard( Color c ) { return new VectorClipboard( c.r, c.g, c.b, c.a ); }
 			public static implicit operator VectorClipboard( Color32 c ) { return new VectorClipboard( c.r, c.g, c.b, c.a ); }
-#if UNITY_2017_2_OR_NEWER
 			public static implicit operator VectorClipboard( Vector2Int v ) { return new VectorClipboard( v.x, v.y ); }
 			public static implicit operator VectorClipboard( Vector3Int v ) { return new VectorClipboard( v.x, v.y, v.z ); }
 			public static implicit operator VectorClipboard( RectInt r ) { return new VectorClipboard( r.xMin, r.yMin, r.width, r.height ); }
 			public static implicit operator VectorClipboard( BoundsInt b ) { return new VectorClipboard( b.position.x, b.position.y, b.position.z, b.size.x, b.size.y, b.size.z ); }
-#endif
 
 			public static implicit operator Vector2( VectorClipboard v ) { return new Vector2( v.c1, v.c2 ); }
 			public static implicit operator Vector3( VectorClipboard v ) { return new Vector3( v.c1, v.c2, v.c3 ); }
@@ -135,12 +133,10 @@ namespace InspectPlusNamespace
 			public static implicit operator Bounds( VectorClipboard v ) { return new Bounds( new Vector3( v.c1, v.c2, v.c3 ), new Vector3( v.c4, v.c5, v.c6 ) * 2f ); }
 			public static implicit operator Color( VectorClipboard v ) { return ( v.c1 > 2f || v.c2 > 2f || v.c3 > 2f || v.c4 > 2f ) ? (Color) (Color32) v : new Color( v.c1, v.c2, v.c3, v.c4 ); } // If values are in range 0-255, use Color32 instead
 			public static implicit operator Color32( VectorClipboard v ) { return new Color32( (byte) Mathf.RoundToInt( v.c1 ), (byte) Mathf.RoundToInt( v.c2 ), (byte) Mathf.RoundToInt( v.c3 ), (byte) Mathf.RoundToInt( v.c4 ) ); }
-#if UNITY_2017_2_OR_NEWER
 			public static implicit operator Vector2Int( VectorClipboard v ) { return new Vector2Int( Mathf.RoundToInt( v.c1 ), Mathf.RoundToInt( v.c2 ) ); }
 			public static implicit operator Vector3Int( VectorClipboard v ) { return new Vector3Int( Mathf.RoundToInt( v.c1 ), Mathf.RoundToInt( v.c2 ), Mathf.RoundToInt( v.c3 ) ); }
 			public static implicit operator RectInt( VectorClipboard v ) { return new RectInt( Mathf.RoundToInt( v.c1 ), Mathf.RoundToInt( v.c2 ), Mathf.RoundToInt( v.c3 ), Mathf.RoundToInt( v.c4 ) ); }
 			public static implicit operator BoundsInt( VectorClipboard v ) { return new BoundsInt( new Vector3Int( Mathf.RoundToInt( v.c1 ), Mathf.RoundToInt( v.c2 ), Mathf.RoundToInt( v.c3 ) ), new Vector3Int( Mathf.RoundToInt( v.c4 ), Mathf.RoundToInt( v.c5 ), Mathf.RoundToInt( v.c6 ) ) ); }
-#endif
 		}
 
 		public class ManagedObjectClipboard
@@ -199,27 +195,14 @@ namespace InspectPlusNamespace
 		private static readonly FieldInfoGetter fieldInfoGetter;
 		private static readonly PropertyInfo gradientValueGetter;
 		private static readonly PropertyInfo inspectorModeGetter;
-#if !UNITY_2017_2_OR_NEWER
-		private static readonly PropertyInfo transformRotationOrderGetter;
-		private static readonly MethodInfo transformDisplayedRotationGetter;
-#endif
 
 		static SerializablePropertyExtensions()
 		{
-#if UNITY_2019_3_OR_NEWER
 			MethodInfo fieldInfoGetterMethod = typeof( Editor ).Assembly.GetType( "UnityEditor.ScriptAttributeUtility" ).GetMethod( "GetFieldInfoAndStaticTypeFromProperty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
-#else
-			MethodInfo fieldInfoGetterMethod = typeof( Editor ).Assembly.GetType( "UnityEditor.ScriptAttributeUtility" ).GetMethod( "GetFieldInfoFromProperty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
-#endif
 
 			fieldInfoGetter = (FieldInfoGetter) Delegate.CreateDelegate( typeof( FieldInfoGetter ), fieldInfoGetterMethod );
 			gradientValueGetter = typeof( SerializedProperty ).GetProperty( "gradientValue", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
 			inspectorModeGetter = typeof( SerializedObject ).GetProperty( "inspectorMode", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-
-#if !UNITY_2017_2_OR_NEWER
-			transformRotationOrderGetter = typeof( Transform ).GetProperty( "rotationOrder", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-			transformDisplayedRotationGetter = typeof( Transform ).GetMethod( "GetLocalEulerAngles", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-#endif
 		}
 
 		public static object CopyValue( this SerializedProperty property )
@@ -230,21 +213,16 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.ArraySize: return (long) property.intValue;
 				case SerializedPropertyType.Boolean: return property.boolValue ? 1L : 0L;
 				case SerializedPropertyType.Bounds: return (VectorClipboard) property.boundsValue;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.BoundsInt: return (VectorClipboard) property.boundsIntValue;
-#endif
 				case SerializedPropertyType.Character: return property.longValue;
 				case SerializedPropertyType.Color: return property.colorValue;
 				case SerializedPropertyType.Enum: return (long) property.intValue;
 				case SerializedPropertyType.ExposedReference: return property.exposedReferenceValue;
-#if UNITY_2017_1_OR_NEWER
 				case SerializedPropertyType.FixedBufferSize: return (long) property.intValue;
-#endif
 				case SerializedPropertyType.Float: return property.doubleValue;
 				case SerializedPropertyType.Gradient: return gradientValueGetter.GetValue( property, null );
 				case SerializedPropertyType.Integer: return property.longValue;
 				case SerializedPropertyType.LayerMask: return property.longValue;
-#if UNITY_2019_3_OR_NEWER
 				case SerializedPropertyType.ManagedReference:
 					object value = property.GetTargetObject();
 					if( value == null )
@@ -288,34 +266,23 @@ namespace InspectPlusNamespace
 					}
 
 					return new ManagedObjectClipboard( property.type, value, nestedManagedObjects == null ? null : nestedManagedObjects.ToArray(), nestedUnityObjects == null ? null : nestedUnityObjects.ToArray() );
-#endif
 				case SerializedPropertyType.ObjectReference: return property.objectReferenceValue;
 				case SerializedPropertyType.Quaternion:
 					// Special case: copy Transform's Rotation as localEulerAngles instead of localRotation
 					if( property.name == "m_LocalRotation" && property.serializedObject.targetObject is Transform && (InspectorMode) inspectorModeGetter.GetValue( property.serializedObject, null ) == InspectorMode.Normal )
 					{
 						Transform targetTransform = (Transform) property.serializedObject.targetObject;
-#if UNITY_2017_2_OR_NEWER
 						return (VectorClipboard) TransformUtils.GetInspectorRotation( targetTransform );
-#else
-						return (VectorClipboard) (Vector3) transformDisplayedRotationGetter.Invoke( targetTransform, new object[1] { transformRotationOrderGetter.GetValue( targetTransform, null ) } );
-#endif
 					}
 					else
 						return (VectorClipboard) property.quaternionValue;
 				case SerializedPropertyType.Rect: return (VectorClipboard) property.rectValue;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.RectInt: return (VectorClipboard) property.rectIntValue;
-#endif
 				case SerializedPropertyType.String: return property.stringValue;
 				case SerializedPropertyType.Vector2: return (VectorClipboard) property.vector2Value;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.Vector2Int: return (VectorClipboard) property.vector2IntValue;
-#endif
 				case SerializedPropertyType.Vector3: return (VectorClipboard) property.vector3Value;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.Vector3Int: return (VectorClipboard) property.vector3IntValue;
-#endif
 				case SerializedPropertyType.Vector4: return (VectorClipboard) property.vector4Value;
 				case SerializedPropertyType.Generic:
 					if( property.isArray )
@@ -326,7 +293,6 @@ namespace InspectPlusNamespace
 
 						return new ArrayClipboard( property.arrayElementType, elements );
 					}
-#if UNITY_2017_1_OR_NEWER
 					else if( property.isFixedBuffer )
 					{
 						object[] elements = new object[property.fixedBufferSize];
@@ -335,7 +301,6 @@ namespace InspectPlusNamespace
 
 						return new ArrayClipboard( elements.Length > 0 ? property.GetFixedBufferElementAtIndex( 0 ).type : null, elements );
 					}
-#endif
 					else if( property.hasChildren )
 					{
 						int count = 0;
@@ -411,11 +376,9 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.Bounds:
 					if( clipboard is VectorClipboard ) property.boundsValue = (VectorClipboard) clipboard;
 					break;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.BoundsInt:
 					if( clipboard is VectorClipboard ) property.boundsIntValue = (VectorClipboard) clipboard;
 					break;
-#endif
 				case SerializedPropertyType.Character:
 					if( clipboard is long ) property.intValue = (int) (long) clipboard;
 					else if( clipboard is string ) property.intValue = ( (string) clipboard )[0];
@@ -442,7 +405,6 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.LayerMask:
 					if( clipboard is long ) property.intValue = (int) (long) clipboard;
 					break;
-#if UNITY_2019_3_OR_NEWER
 				case SerializedPropertyType.ManagedReference:
 					if( clipboard == null )
 						property.managedReferenceValue = null;
@@ -478,7 +440,6 @@ namespace InspectPlusNamespace
 					}
 
 					break;
-#endif
 				case SerializedPropertyType.ObjectReference: TryAssignClipboardToObjectProperty( property, clipboard, false ); break;
 				case SerializedPropertyType.Quaternion:
 					if( clipboard is VectorClipboard )
@@ -494,32 +455,26 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.Rect:
 					if( clipboard is VectorClipboard ) property.rectValue = (VectorClipboard) clipboard;
 					break;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.RectInt:
 					if( clipboard is VectorClipboard ) property.rectIntValue = (VectorClipboard) clipboard;
 					break;
-#endif
 				case SerializedPropertyType.String: property.stringValue = clipboard != null ? clipboard.ToString() : ""; break;
 				case SerializedPropertyType.Vector2:
 					if( clipboard is VectorClipboard ) property.vector2Value = (VectorClipboard) clipboard;
 					else if( clipboard is Color ) property.vector2Value = (VectorClipboard) (Color) clipboard;
 					break;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.Vector2Int:
 					if( clipboard is VectorClipboard ) property.vector2IntValue = (VectorClipboard) clipboard;
 					else if( clipboard is Color ) property.vector2IntValue = (VectorClipboard) (Color32) (Color) clipboard;
 					break;
-#endif
 				case SerializedPropertyType.Vector3:
 					if( clipboard is VectorClipboard ) property.vector3Value = (VectorClipboard) clipboard;
 					else if( clipboard is Color ) property.vector3Value = (VectorClipboard) (Color) clipboard;
 					break;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.Vector3Int:
 					if( clipboard is VectorClipboard ) property.vector3IntValue = (VectorClipboard) clipboard;
 					else if( clipboard is Color ) property.vector3IntValue = (VectorClipboard) (Color32) (Color) clipboard;
 					break;
-#endif
 				case SerializedPropertyType.Vector4:
 					if( clipboard is VectorClipboard ) property.vector4Value = (VectorClipboard) clipboard;
 					else if( clipboard is Color ) property.vector4Value = (VectorClipboard) (Color) clipboard;
@@ -535,7 +490,6 @@ namespace InspectPlusNamespace
 							PasteValue( element, array.elements[i], false );
 						}
 					}
-#if UNITY_2017_1_OR_NEWER
 					else if( property.isFixedBuffer && clipboard is ArrayClipboard )
 					{
 						ArrayClipboard array = (ArrayClipboard) clipboard;
@@ -546,7 +500,6 @@ namespace InspectPlusNamespace
 							PasteValue( element, array.elements[i], false );
 						}
 					}
-#endif
 					else if( property.hasChildren && clipboard is GenericObjectClipboard )
 					{
 						GenericObjectClipboard obj = (GenericObjectClipboard) clipboard;
@@ -599,9 +552,7 @@ namespace InspectPlusNamespace
 				switch( property.propertyType )
 				{
 					case SerializedPropertyType.ExposedReference: return true;
-#if UNITY_2019_3_OR_NEWER
 					case SerializedPropertyType.ManagedReference: return true;
-#endif
 					case SerializedPropertyType.ObjectReference: return true;
 					default: return false;
 				}
@@ -613,9 +564,7 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.ArraySize: return ( clipboard is long && (long) clipboard >= 0L ) || ( clipboard is double && (double) clipboard >= 0.0 );
 				case SerializedPropertyType.Boolean: return clipboard is bool || clipboard is long || clipboard is double;
 				case SerializedPropertyType.Bounds: return clipboard is VectorClipboard;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.BoundsInt: return clipboard is VectorClipboard;
-#endif
 				case SerializedPropertyType.Character: return ( clipboard is long && (long) clipboard <= 255L && (long) clipboard >= 0L ) || ( clipboard is string && ( (string) clipboard ).Length > 0 );
 				case SerializedPropertyType.Color: return clipboard is Color || clipboard is VectorClipboard;
 				case SerializedPropertyType.Enum: return clipboard is long;
@@ -624,7 +573,6 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.Gradient: return clipboard is Gradient;
 				case SerializedPropertyType.Integer: return clipboard is long || clipboard is double;
 				case SerializedPropertyType.LayerMask: return clipboard is long;
-#if UNITY_2019_3_OR_NEWER
 				case SerializedPropertyType.ManagedReference:
 					if( clipboard is ManagedObjectClipboard )
 					{
@@ -639,30 +587,21 @@ namespace InspectPlusNamespace
 					}
 					else
 						return false;
-#endif
 				case SerializedPropertyType.ObjectReference: return TryAssignClipboardToObjectProperty( property, clipboard, true );
 				case SerializedPropertyType.Quaternion: return clipboard is VectorClipboard;
 				case SerializedPropertyType.Rect: return clipboard is VectorClipboard;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.RectInt: return clipboard is VectorClipboard;
-#endif
 				case SerializedPropertyType.String: return true;
 				case SerializedPropertyType.Vector2: return clipboard is VectorClipboard || clipboard is Color;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.Vector2Int: return clipboard is VectorClipboard || clipboard is Color;
-#endif
 				case SerializedPropertyType.Vector3: return clipboard is VectorClipboard || clipboard is Color;
-#if UNITY_2017_2_OR_NEWER
 				case SerializedPropertyType.Vector3Int: return clipboard is VectorClipboard || clipboard is Color;
-#endif
 				case SerializedPropertyType.Vector4: return clipboard is VectorClipboard || clipboard is Color;
 				case SerializedPropertyType.Generic:
 					if( property.isArray )
 						return clipboard is ArrayClipboard && ( (ArrayClipboard) clipboard ).elementType == property.arrayElementType;
-#if UNITY_2017_1_OR_NEWER
 					else if( property.isFixedBuffer )
 						return clipboard is ArrayClipboard && property.fixedBufferSize > 0 && ( (ArrayClipboard) clipboard ).elementType == property.GetFixedBufferElementAtIndex( 0 ).type;
-#endif
 					else if( property.hasChildren )
 						return clipboard is GenericObjectClipboard && ( (GenericObjectClipboard) clipboard ).type == property.type;
 					else

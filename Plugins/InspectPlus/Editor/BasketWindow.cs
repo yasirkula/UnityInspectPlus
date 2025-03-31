@@ -149,20 +149,15 @@ namespace InspectPlusNamespace
 		private void OnEnable()
 		{
 			EditorSceneManager.sceneOpened += OnSceneOpened;
-#if UNITY_2018_1_OR_NEWER
 			EditorApplication.wantsToQuit += OnEditorQuitting;
-#endif
 		}
 
 		private void OnDisable()
 		{
 			EditorSceneManager.sceneOpened -= OnSceneOpened;
-#if UNITY_2018_1_OR_NEWER
 			EditorApplication.wantsToQuit -= OnEditorQuitting;
-#endif
 		}
 
-#if UNITY_2018_1_OR_NEWER
 		private bool OnEditorQuitting()
 		{
 			// Calling SaveData inside OnDestroy doesn't seem to save the changes to savedData between Unity sessions
@@ -171,7 +166,6 @@ namespace InspectPlusNamespace
 			SaveData();
 			return true;
 		}
-#endif
 
 		private void OnDestroy()
 		{
@@ -361,7 +355,6 @@ namespace InspectPlusNamespace
 
 		public bool RefreshTargetsOfChildren()
 		{
-#if UNITY_2019_2_OR_NEWER
 			if( Children == null )
 				return false;
 
@@ -380,24 +373,17 @@ namespace InspectPlusNamespace
 				isDirty |= nullEntries[i].RefreshTarget( objects[i] );
 
 			return isDirty;
-#else
-			return false;
-#endif
 		}
 	}
 
 	[Serializable]
 	public class BasketWindowChildEntry : BasketWindowEntry
 	{
-#if UNITY_2019_2_OR_NEWER // Correctly save scene objects using GlobalObjectId on Unity 2019.2+
 		public string ID;
-#endif
 
 		public BasketWindowChildEntry( Object target ) : base( target )
 		{
-#if UNITY_2019_2_OR_NEWER
 			ID = GlobalObjectId.GetGlobalObjectIdSlow( target ).ToString();
-#endif
 		}
 	}
 

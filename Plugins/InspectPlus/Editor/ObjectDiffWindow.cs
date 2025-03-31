@@ -635,10 +635,8 @@ namespace InspectPlusNamespace
 						List<DiffNode> _diffNodes;
 						if( childProp1.isArray && childProp2.isArray )
 							CompareProperties( EnumerateArrayElements( childProp1.Copy() ), EnumerateArrayElements( childProp2.Copy() ), diffedSO1, diffedSO2, out _diffNodes );
-#if UNITY_2017_1_OR_NEWER
 						else if( childProp1.isFixedBuffer && childProp2.isFixedBuffer )
 							CompareProperties( EnumerateFixedBufferElements( childProp1.Copy() ), EnumerateFixedBufferElements( childProp2.Copy() ), diffedSO1, diffedSO2, out _diffNodes );
-#endif
 						else if( childProp1.hasChildren && childProp2.hasChildren )
 							CompareProperties( childProp1.EnumerateDirectChildren(), childProp2.EnumerateDirectChildren(), diffedSO1, diffedSO2, out _diffNodes );
 						else
@@ -680,13 +678,11 @@ namespace InspectPlusNamespace
 				yield return property.GetArrayElementAtIndex( i );
 		}
 
-#if UNITY_2017_1_OR_NEWER
 		private IEnumerable<SerializedProperty> EnumerateFixedBufferElements( SerializedProperty property )
 		{
 			for( int i = 0, length = property.fixedBufferSize; i < length; i++ )
 				yield return property.GetFixedBufferElementAtIndex( i );
 		}
-#endif
 
 		private DiffType? GetCombinedDiffType( IList<DiffNode> nodes )
 		{

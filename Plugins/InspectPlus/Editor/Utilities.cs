@@ -18,9 +18,7 @@ namespace InspectPlusNamespace
 		{
 			typeof( string ), typeof( Vector4 ), typeof( Vector3 ), typeof( Vector2 ), typeof( Rect ),
 			typeof( Quaternion ), typeof( Color ), typeof( Color32 ), typeof( Bounds ), typeof( Matrix4x4 ),
-#if UNITY_2017_2_OR_NEWER
 			typeof( Vector3Int ), typeof( Vector2Int ), typeof( RectInt ), typeof( BoundsInt )
-#endif
 		};
 
 		private static readonly Dictionary<Type, string> typeNamesLookup = new Dictionary<Type, string>

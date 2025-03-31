@@ -549,11 +549,7 @@ namespace InspectPlusNamespace
 
 						Transform transform = (Transform) assets[i];
 						string path = AssetDatabase.GenerateUniqueAssetPath( Path.Combine( parentFolder, transform.name + ".prefab" ) );
-#if UNITY_2018_3_OR_NEWER
 						GameObject prefab = PrefabUtility.SaveAsPrefabAssetAndConnect( transform.gameObject, path, InteractionMode.UserAction );
-#else
-						GameObject prefab = PrefabUtility.CreatePrefab( path, transform.gameObject, ReplacePrefabOptions.ConnectToPrefab );
-#endif
 						if( prefab )
 							instanceIDs.Add( prefab.GetInstanceID() );
 					}

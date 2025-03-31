@@ -130,9 +130,7 @@ namespace InspectPlusNamespace
 		private void OnEnable()
 		{
 			wantsMouseMove = wantsMouseEnterLeaveWindow = true;
-#if UNITY_2020_1_OR_NEWER
 			wantsLessLayoutEvents = false;
-#endif
 
 			EditorApplication.update -= CheckWindowFocusRegularly;
 			EditorApplication.update += CheckWindowFocusRegularly;

@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Text;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
@@ -15,13 +16,6 @@ using ManagedObjectClipboard = InspectPlusNamespace.SerializablePropertyExtensio
 using GameObjectHierarchyClipboard = InspectPlusNamespace.SerializablePropertyExtensions.GameObjectHierarchyClipboard;
 using ComponentGroupClipboard = InspectPlusNamespace.SerializablePropertyExtensions.ComponentGroupClipboard;
 using AssetFilesClipboard = InspectPlusNamespace.SerializablePropertyExtensions.AssetFilesClipboard;
-#if UNITY_2021_2_OR_NEWER
-using PrefabStage = UnityEditor.SceneManagement.PrefabStage;
-using PrefabStageUtility = UnityEditor.SceneManagement.PrefabStageUtility;
-#elif UNITY_2018_3_OR_NEWER
-using PrefabStage = UnityEditor.Experimental.SceneManagement.PrefabStage;
-using PrefabStageUtility = UnityEditor.Experimental.SceneManagement.PrefabStageUtility;
-#endif
 
 namespace InspectPlusNamespace
 {
@@ -818,15 +812,11 @@ namespace InspectPlusNamespace
 				{
 					Transform transform = value is Component ? ( (Component) value ).transform : ( (GameObject) value ).transform;
 					Transform pathIterateTarget = null;
-#if UNITY_2018_3_OR_NEWER
 					PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
 					if( openPrefabStage != null && openPrefabStage.IsPartOfPrefabContents( transform.gameObject ) )
 						pathIterateTarget = openPrefabStage.prefabContentsRoot.transform.parent;
 					else
-#endif
-					{
 						SceneName = transform.gameObject.scene.name;
-					}
 
 					// Calculate Path
 					List<PathComponent> pathComponents = new List<PathComponent>( 5 );
@@ -852,7 +842,6 @@ namespace InspectPlusNamespace
 					// Search all open scenes to find the object reference
 					// Don't use GameObject.Find because it can't find inactive objects
 
-#if UNITY_2018_3_OR_NEWER
 					// Search the currently open prefab stage (if any)
 					PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
 					if( openPrefabStage != null )
@@ -861,7 +850,6 @@ namespace InspectPlusNamespace
 						if( result )
 							return result;
 					}
-#endif
 
 					int originalSceneIndex = -1;
 					Scene[] scenes = new Scene[SceneManager.sceneCount];
@@ -1170,7 +1158,6 @@ namespace InspectPlusNamespace
 					return new GameObject[0];
 				}
 
-#if UNITY_2018_3_OR_NEWER
 				// If a parent isn't set and we are in Prefab mode, set the parent to the prefab root
 				if( !parent )
 				{
@@ -1178,7 +1165,6 @@ namespace InspectPlusNamespace
 					if( openPrefabStage != null )
 						parent = openPrefabStage.prefabContentsRoot.transform;
 				}
-#endif
 
 				GameObject[] result = new GameObject[GameObjects.Length];
 				List<GameObject> hierarchy = new List<GameObject>( GameObjects.Length * 32 );
@@ -1336,14 +1322,8 @@ namespace InspectPlusNamespace
 					}
 
 					GameObject prefab = null;
-#if UNITY_2018_3_OR_NEWER
 					if( PrefabUtility.GetPrefabInstanceStatus( gameObject ) == PrefabInstanceStatus.Connected )
 						prefab = PrefabUtility.GetCorrespondingObjectFromSource( gameObject ) as GameObject;
-#else
-					PrefabType prefabType = PrefabUtility.GetPrefabType( gameObject );
-					if( prefabType == PrefabType.ModelPrefabInstance || prefabType == PrefabType.PrefabInstance )
-						prefab = PrefabUtility.GetPrefabParent( gameObject ) as GameObject;
-#endif
 
 					if( !prefab )
 						RemovedComponents = new RemovedComponentInfo[0];
@@ -1355,11 +1335,7 @@ namespace InspectPlusNamespace
 						int newComponentsStartIndex = _components.Count;
 						for( int i = _components.Count - 1; i >= 0; i-- )
 						{
-#if UNITY_2018_3_OR_NEWER
 							Component originalComponent = PrefabUtility.GetCorrespondingObjectFromSource( _components[i] ) as Component;
-#else
-							Component originalComponent = PrefabUtility.GetPrefabParent( _components[i] ) as Component;
-#endif
 							if( !originalComponent || !_removedComponents.Remove( originalComponent ) )
 							{
 								// Move Components that are newly added to the instance to the end of the list
@@ -1390,11 +1366,7 @@ namespace InspectPlusNamespace
 					// Store prefab asset (if it is a prefab instance's root GameObject)
 					if( prefab )
 					{
-#if UNITY_2018_3_OR_NEWER
 						GameObject prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot( gameObject );
-#else
-						GameObject prefabRoot = PrefabUtility.FindPrefabRoot( gameObject );
-#endif
 						if( prefabRoot == gameObject )
 						{
 							// If child objects aren't copied and this prefab has child objects, don't save the prefab data
@@ -1403,11 +1375,7 @@ namespace InspectPlusNamespace
 						}
 						else if( prefabRoot && transform.parent )
 						{
-#if UNITY_2018_3_OR_NEWER
 							if( prefabRoot == PrefabUtility.GetOutermostPrefabInstanceRoot( transform.parent.gameObject ) )
-#else
-							if( prefabRoot == PrefabUtility.FindPrefabRoot( transform.parent.gameObject ) )
-#endif
 								IsPartOfParentPrefab = true;
 						}
 					}
@@ -1639,7 +1607,7 @@ namespace InspectPlusNamespace
 				}
 			}
 
-			public struct ComponentToPaste
+			public readonly struct ComponentToPaste
 			{
 				public readonly SerializedClipboard SerializedComponent;
 				public readonly Component TargetComponent;
@@ -2909,11 +2877,9 @@ namespace InspectPlusNamespace
 			else
 			{
 				GameObject gameObject = transform.gameObject;
-#if UNITY_2018_3_OR_NEWER
 				PrefabStage openPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
 				if( openPrefabStage != null && openPrefabStage.IsPartOfPrefabContents( gameObject ) )
 					return 0;
-#endif
 
 				GameObject[] rootObjects = gameObject.scene.GetRootGameObjects();
 				for( int i = 0; i < rootObjects.Length; i++ )

@@ -167,18 +167,14 @@ namespace InspectPlusNamespace
 		public HierarchyWindowSelectionChangedDelegate OnSelectionChanged;
 		public bool SyncSelection;
 
-#if UNITY_2019_3_OR_NEWER
 		private readonly MethodInfo selectedIconGetter;
-#endif
 
 		public CustomHierarchyWindowDrawer( TreeViewState state, Transform rootTransform ) : base( state )
 		{
 			rootGameObjectID = rootTransform.gameObject.GetInstanceID();
 			textComparer = new CultureInfo( "en-US" ).CompareInfo;
 			textCompareOptions = CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace;
-#if UNITY_2019_3_OR_NEWER
 			selectedIconGetter = typeof( EditorUtility ).GetMethod( "GetIconInActiveState", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
-#endif
 
 			Reload();
 		}
@@ -223,9 +219,7 @@ namespace InspectPlusNamespace
 				if( !isSearching || textComparer.IndexOf( displayName, searchString, textCompareOptions ) >= 0 )
 				{
 					item = new TreeViewItem( instanceID, !isSearching ? depth : 0, displayName );
-#if UNITY_2018_3_OR_NEWER
 					item.icon = PrefabUtility.GetIconForGameObject( child.gameObject );
-#endif
 					rows.Add( item );
 				}
 
@@ -293,47 +287,26 @@ namespace InspectPlusNamespace
 			GUIStyle style;
 			if( goActive )
 			{
-#if UNITY_2018_3_OR_NEWER
 				switch( PrefabUtility.GetPrefabInstanceStatus( go ) )
 				{
 					case PrefabInstanceStatus.MissingAsset: style = GameObjectStyles.brokenPrefabLabel; break;
 					case PrefabInstanceStatus.Connected: style = GameObjectStyles.prefabLabel; break;
 					default: style = DefaultStyles.foldoutLabel; break;
 				}
-#else
-				switch( PrefabUtility.GetPrefabType( go ) )
-				{
-					case PrefabType.MissingPrefabInstance: style = GameObjectStyles.brokenPrefabLabel; break;
-					case PrefabType.ModelPrefabInstance:
-					case PrefabType.PrefabInstance: style = GameObjectStyles.prefabLabel; break;
-					default: style = DefaultStyles.foldoutLabel; break;
-				}
-#endif
 			}
 			else
 			{
-#if UNITY_2018_3_OR_NEWER
 				switch( PrefabUtility.GetPrefabInstanceStatus( go ) )
 				{
 					case PrefabInstanceStatus.MissingAsset: style = GameObjectStyles.disabledBrokenPrefabLabel; break;
 					case PrefabInstanceStatus.Connected: style = GameObjectStyles.disabledPrefabLabel; break;
 					default: style = GameObjectStyles.disabledLabel; break;
 				}
-#else
-				switch( PrefabUtility.GetPrefabType( go ) )
-				{
-					case PrefabType.MissingPrefabInstance: style = GameObjectStyles.disabledBrokenPrefabLabel; break;
-					case PrefabType.ModelPrefabInstance:
-					case PrefabType.PrefabInstance: style = GameObjectStyles.disabledPrefabLabel; break;
-					default: style = GameObjectStyles.disabledLabel; break;
-				}
-#endif
 			}
 
 			Rect rect = args.rowRect;
 			rect.x += GetContentIndent( args.item );
 
-#if UNITY_2018_3_OR_NEWER
 			Texture2D icon = args.item.icon;
 			if( icon )
 			{
@@ -341,14 +314,12 @@ namespace InspectPlusNamespace
 				Rect iconRect = rect;
 				iconRect.width = 16f;
 
-#if UNITY_2019_3_OR_NEWER
 				if( args.selected && args.focused && selectedIconGetter != null )
 				{
 					icon = selectedIconGetter.Invoke( null, new object[] { icon } ) as Texture2D;
 					if( !icon )
 						icon = args.item.icon;
 				}
-#endif
 
 				GUI.DrawTexture( iconRect, icon, ScaleMode.ScaleToFit, true, 0f, iconTint, 0f, 0f );
 
@@ -357,7 +328,6 @@ namespace InspectPlusNamespace
 
 				rect.x += iconRect.width + 2f;
 			}
-#endif
 
 			if( Event.current.type == EventType.Repaint )
 				style.Draw( rect, args.label, false, false, args.selected, args.focused );
@@ -468,11 +438,7 @@ namespace InspectPlusNamespace
 
 						menu.AddSeparator( "" );
 
-#if UNITY_2018_3_OR_NEWER
 						Object prefab = PrefabUtility.GetCorrespondingObjectFromSource( EditorUtility.InstanceIDToObject( selectedItem.id ) );
-#else
-						Object prefab = PrefabUtility.GetPrefabParent( EditorUtility.InstanceIDToObject( selectedItem.id ) );
-#endif
 						if( prefab )
 						{
 							menu.AddItem( new GUIContent( "Select Prefab" ), false, () =>
@@ -481,7 +447,6 @@ namespace InspectPlusNamespace
 								EditorGUIUtility.PingObject( prefab.GetInstanceID() );
 							} );
 
-#if UNITY_2018_3_OR_NEWER
 							for( int i = 0; i < selection.Length; i++ )
 							{
 								if( selection[i] && PrefabUtility.IsPartOfNonAssetPrefabInstance( selection[i] ) && PrefabUtility.IsOutermostPrefabInstanceRoot( selection[i] ) )
@@ -511,7 +476,6 @@ namespace InspectPlusNamespace
 									break;
 								}
 							}
-#endif
 
 							menu.AddSeparator( "" );
 						}
@@ -519,11 +483,7 @@ namespace InspectPlusNamespace
 				}
 			}
 
-#if UNITY_2020_2_OR_NEWER
 			string menusLastItem = (string) typeof( GameObjectUtility ).GetMethod( "GetFirstItemPathAfterGameObjectCreationMenuItems", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static ).Invoke( null, null );
-#else
-			string menusLastItem = "GameObject/Center On Children";
-#endif
 			foreach( string path in Unsupported.GetSubmenus( "GameObject" ) )
 			{
 				if( path.Equals( menusLastItem, StringComparison.OrdinalIgnoreCase ) )

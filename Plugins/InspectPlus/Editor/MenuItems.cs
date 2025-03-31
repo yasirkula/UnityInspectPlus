@@ -116,33 +116,19 @@ namespace InspectPlusNamespace
 			return Selection.objects.Length > 0;
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/AssetImporter/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/Material/Inspect+/" + NEW_TAB_LABEL, priority = 1450 )]
-#else
-		[MenuItem( "CONTEXT/Component/" + NEW_TAB_LABEL, priority = 1500 )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_TAB_LABEL, priority = 1500 )]
-		[MenuItem( "CONTEXT/AssetImporter/" + NEW_TAB_LABEL, priority = 1500 )]
-		[MenuItem( "CONTEXT/Material/" + NEW_TAB_LABEL, priority = 1500 )]
-#endif
 		private static void ContextMenuItemNewTab( MenuCommand command )
 		{
 			InspectPlusWindow.Inspect( command.context, false );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/AssetImporter/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
 		[MenuItem( "CONTEXT/Material/Inspect+/" + NEW_WINDOW_LABEL, priority = 1450 )]
-#else
-		[MenuItem( "CONTEXT/Component/" + NEW_WINDOW_LABEL, priority = 1500 )]
-		[MenuItem( "CONTEXT/ScriptableObject/" + NEW_WINDOW_LABEL, priority = 1500 )]
-		[MenuItem( "CONTEXT/AssetImporter/" + NEW_WINDOW_LABEL, priority = 1500 )]
-		[MenuItem( "CONTEXT/Material/" + NEW_WINDOW_LABEL, priority = 1500 )]
-#endif
 		private static void ContextMenuItemNewWindow( MenuCommand command )
 		{
 			InspectPlusWindow.Inspect( command.context, true );
@@ -152,17 +138,10 @@ namespace InspectPlusNamespace
 		#region Add to Basket Buttons
 		[MenuItem( "GameObject/Inspect+/Add to Basket", priority = 49 )]
 		[MenuItem( "Assets/Inspect+/Add to Basket", priority = 1500 )]
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Add to Basket", priority = 1475 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Add to Basket", priority = 1475 )]
 		[MenuItem( "CONTEXT/AssetImporter/Inspect+/Add to Basket", priority = 1475 )]
 		[MenuItem( "CONTEXT/Material/Inspect+/Add to Basket", priority = 1475 )]
-#else
-		[MenuItem( "CONTEXT/Component/Add to Basket", priority = 1475 )]
-		[MenuItem( "CONTEXT/ScriptableObject/Add to Basket", priority = 1475 )]
-		[MenuItem( "CONTEXT/AssetImporter/Add to Basket", priority = 1475 )]
-		[MenuItem( "CONTEXT/Material/Add to Basket", priority = 1475 )]
-#endif
 		private static void ContextMenuItemAddToBasket( MenuCommand command )
 		{
 			if( command.context )
@@ -229,15 +208,9 @@ namespace InspectPlusNamespace
 		#region Copy/Paste Buttons
 		[MenuItem( "GameObject/Inspect+/Copy/Reference", priority = 50 )]
 		[MenuItem( "Assets/Inspect+/Copy/Reference", priority = 1501 )]
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Component", priority = 1500 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Copy", priority = 1500 )]
 		[MenuItem( "CONTEXT/Material/Inspect+/Copy", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Copy Component (Inspect+)", priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/Copy (Inspect+)", priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/Copy (Inspect+)", priority = 1450 )]
-#endif
 		private static void ContextMenuItemCopyObject( MenuCommand command )
 		{
 			if( command.context )
@@ -247,11 +220,7 @@ namespace InspectPlusNamespace
 		}
 
 		[MenuItem( "GameObject/Inspect+/Copy/Multiple Components...", priority = 50 )]
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Multiple Components...", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Copy Multiple Components... (Inspect+)", priority = 1450 )]
-#endif
 		private static void ContextMenuItemCopyMultipleComponents( MenuCommand command )
 		{
 			// When multiple components are inspected, show the "Select components to copy" window for only the first component
@@ -284,22 +253,14 @@ namespace InspectPlusNamespace
 			ContextMenuItemCopyMultipleComponents( new MenuCommand( null ) );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component As New (Inspect+)", priority = 1450 )]
-#endif
 		private static void ContextMenuItemPasteComponentAsNew( MenuCommand command )
 		{
 			if( PasteBinWindow.ActiveClipboard != null )
 				PasteBinWindow.ActiveClipboard.PasteAsNewComponent( command.context as Component );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New From Bin", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component As New From Bin (Inspect+)", priority = 1450 )]
-#endif
 		private static void ContextMenuItemPasteComponentAsNewFromBin( MenuCommand command )
 		{
 			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
@@ -326,30 +287,18 @@ namespace InspectPlusNamespace
 			ContextMenuItemPasteComponentAsNewFromBin( new MenuCommand( null ) );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values", priority = 1500 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values", priority = 1500 )]
 		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component Values (Inspect+)", priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/Paste Values (Inspect+)", priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/Paste Values (Inspect+)", priority = 1450 )]
-#endif
 		private static void ContextMenuItemPasteObject( MenuCommand command )
 		{
 			if( PasteBinWindow.ActiveClipboard != null )
 				PasteBinWindow.ActiveClipboard.PasteToObject( command.context );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values From Bin", priority = 1500 )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values From Bin", priority = 1500 )]
 		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values From Bin", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component Values From Bin (Inspect+)", priority = 1450 )]
-		[MenuItem( "CONTEXT/ScriptableObject/Paste Values From Bin (Inspect+)", priority = 1450 )]
-		[MenuItem( "CONTEXT/Material/Paste Values From Bin (Inspect+)", priority = 1450 )]
-#endif
 		private static void ContextMenuItemPasteObjectFromBin( MenuCommand command )
 		{
 			// This happens when this button is clicked while multiple Objects were selected. In this case,
@@ -381,11 +330,7 @@ namespace InspectPlusNamespace
 		}
 
 		[MenuItem( "GameObject/Inspect+/Paste/Multiple Components...", priority = 50 )]
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components...", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Multiple Components... (Inspect+)", priority = 1450 )]
-#endif
 		private static void MenuItemPasteComponentGroup( MenuCommand command )
 		{
 			// When multiple GameObjects are inspected, show the "Select components to paste" window for all the selected GameObjects at once
@@ -423,11 +368,7 @@ namespace InspectPlusNamespace
 		}
 
 		[MenuItem( "GameObject/Inspect+/Paste/Multiple Components From Bin...", priority = 50 )]
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components From Bin...", priority = 1500 )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Multiple Components From Bin... (Inspect+)", priority = 1450 )]
-#endif
 		private static void MenuItemPasteComponentGroupFromBin( MenuCommand command )
 		{
 			// See ContextMenuItemPasteObjectFromBin for the purpose of EditorApplication.update here
@@ -474,59 +415,35 @@ namespace InspectPlusNamespace
 			return Selection.activeTransform;
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Copy/Multiple Components...", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Copy Multiple Components... (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemCopyComponentGroupValidate2( MenuCommand command )
 		{
 			return command.context;
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component As New (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemPasteComponentAsNewValidate( MenuCommand command )
 		{
 			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteAsNewComponent( command.context as Component );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component As New From Bin", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component As New From Bin (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemPasteComponentAsNewFromBinValidate( MenuCommand command )
 		{
 			return ValidatePasteOperation( command );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values", validate = true )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values", validate = true )]
 		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component Values (Inspect+)", validate = true )]
-		[MenuItem( "CONTEXT/ScriptableObject/Paste Values (Inspect+)", validate = true )]
-		[MenuItem( "CONTEXT/Material/Paste Values (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemPasteObjectValidate( MenuCommand command )
 		{
 			return ValidatePasteOperation( command ) && PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteToObject( command.context );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Component Values From Bin", validate = true )]
 		[MenuItem( "CONTEXT/ScriptableObject/Inspect+/Paste Values From Bin", validate = true )]
 		[MenuItem( "CONTEXT/Material/Inspect+/Paste Values From Bin", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Component Values From Bin (Inspect+)", validate = true )]
-		[MenuItem( "CONTEXT/ScriptableObject/Paste Values From Bin (Inspect+)", validate = true )]
-		[MenuItem( "CONTEXT/Material/Paste Values From Bin (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemPasteObjectFromBinValidate( MenuCommand command )
 		{
 			return ValidatePasteOperation( command );
@@ -538,11 +455,7 @@ namespace InspectPlusNamespace
 			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteComponentGroup( Selection.activeGameObject );
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components...", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Multiple Components... (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemPasteComponentGroupValidate2( MenuCommand command )
 		{
 			return PasteBinWindow.ActiveClipboard != null && PasteBinWindow.ActiveClipboard.CanPasteComponentGroup( PreferablyGameObject( command.context ) as GameObject );
@@ -554,11 +467,7 @@ namespace InspectPlusNamespace
 			return Selection.activeGameObject;
 		}
 
-#if UNITY_2019_4_OR_NEWER
 		[MenuItem( "CONTEXT/Component/Inspect+/Paste/Multiple Components From Bin...", validate = true )]
-#else
-		[MenuItem( "CONTEXT/Component/Paste Multiple Components From Bin... (Inspect+)", validate = true )]
-#endif
 		private static bool ContextMenuItemPasteComponentGroupFromBinValidate2( MenuCommand command )
 		{
 			return command.context;

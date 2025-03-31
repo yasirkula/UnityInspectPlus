@@ -4,11 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
-#if UNITY_2020_2_OR_NEWER
 using UnityEditor.AssetImporters;
-#elif UNITY_2017_1_OR_NEWER
-using UnityEditor.Experimental.AssetImporters;
-#endif
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -77,23 +73,10 @@ namespace InspectPlusNamespace
 		private int inspectorDrawerCount;
 		private int debugModeDrawerCount;
 
-#if UNITY_2017_1_OR_NEWER
 		private AssetImporterEditor inspectorAssetDrawer;
-#else
-		private Editor inspectorAssetDrawer;
-		private static Type assetImporterEditorType;
-		private static PropertyInfo assetImporterShowImportedObjectProperty;
-#endif
 
-#if UNITY_2018_1_OR_NEWER
 		private static MethodInfo assetImporterEditorSetterMethod;
-#else
-		private static FieldInfo assetImporterEditorField;
-#endif
-
-#if UNITY_2019_2_OR_NEWER
 		private static MethodInfo showApplyRevertDialogMethod;
-#endif
 
 		private static FieldInfo editorWindowDockAreaField;
 		private static MethodInfo dockAreaAddTabMethod;
@@ -112,9 +95,7 @@ namespace InspectPlusNamespace
 		private bool syncHierarchyWindowSelection;
 		private InspectPlusWindow hierarchyWindowBoundInspector;
 
-#if UNITY_2017_2_OR_NEWER
 		private bool changingPlayMode;
-#endif
 		private bool shouldRepositionSelf;
 		private bool shouldRepaint;
 		private bool snapFavoritesToActiveObject;
@@ -192,30 +173,13 @@ namespace InspectPlusNamespace
 				addComponentButton = null;
 			}
 
-#if UNITY_2018_1_OR_NEWER
 			assetImporterEditorSetterMethod = typeof( AssetImporterEditor ).GetMethod( "InternalSetAssetImporterTargetEditor", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-#elif UNITY_2017_1_OR_NEWER
-			assetImporterEditorField = typeof( AssetImporterEditor ).GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
-#else
-			assetImporterEditorType = typeof( EditorApplication ).Assembly.GetType( "UnityEditor.AssetImporterInspector" );
-			assetImporterShowImportedObjectProperty = assetImporterEditorType.GetProperty( "showImportedObject", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
-			assetImporterEditorField = assetImporterEditorType.GetField( "m_AssetEditor", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic );
-#endif
-
-#if UNITY_2019_2_OR_NEWER
 			showApplyRevertDialogMethod = typeof( AssetImporterEditor ).GetMethod( "CheckForApplyOnClose", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-#endif
 
 			editorWindowDockAreaField = typeof( EditorWindow ).GetField( "m_Parent", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
 			Type dockAreaType = typeof( EditorWindow ).Assembly.GetType( "UnityEditor.DockArea" );
 			if( dockAreaType != null )
-			{
-#if UNITY_2018_3_OR_NEWER
 				dockAreaAddTabMethod = dockAreaType.GetMethod( "AddTab", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new Type[2] { typeof( EditorWindow ), typeof( bool ) }, null );
-#else
-				dockAreaAddTabMethod = dockAreaType.GetMethod( "AddTab", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new Type[1] { typeof( EditorWindow ) }, null );
-#endif
-			}
 
 			favoritesIconNoTooltip = new GUIContent( EditorGUIUtility.IconContent( "Favorite Icon" ).image );
 			historyIconNoTooltip = new GUIContent( EditorGUIUtility.IconContent( "Search Icon" ).image );
@@ -256,16 +220,9 @@ namespace InspectPlusNamespace
 		{
 			windows.Add( this );
 
-			Undo.undoRedoPerformed -= OnUndoRedo;
 			Undo.undoRedoPerformed += OnUndoRedo;
-#if UNITY_2017_2_OR_NEWER
-			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
 			EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-#endif
-#if UNITY_2019_2_OR_NEWER
-			EditorApplication.wantsToQuit -= ApplicationWantsToQuit;
 			EditorApplication.wantsToQuit += ApplicationWantsToQuit;
-#endif
 
 			if( mainObject )
 			{
@@ -299,12 +256,8 @@ namespace InspectPlusNamespace
 			windows.Remove( this );
 
 			Undo.undoRedoPerformed -= OnUndoRedo;
-#if UNITY_2017_2_OR_NEWER
 			EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
-#endif
-#if UNITY_2019_2_OR_NEWER
 			EditorApplication.wantsToQuit -= ApplicationWantsToQuit;
-#endif
 
 			historyHolder.Clear();
 			favoritesHolder.Clear();
@@ -331,13 +284,11 @@ namespace InspectPlusNamespace
 			SetInspectorAssetDrawer( null );
 		}
 
-#if UNITY_2019_2_OR_NEWER
 		private bool ApplicationWantsToQuit()
 		{
 			SetInspectorAssetDrawer( null ); // Show Apply/Revert dialog if necessary
 			return true;
 		}
-#endif
 
 		private void OnFocus()
 		{
@@ -350,7 +301,6 @@ namespace InspectPlusNamespace
 			debugModeRefreshTime = 0f;
 		}
 
-#if UNITY_2017_2_OR_NEWER
 		private void OnPlayModeStateChanged( PlayModeStateChange state )
 		{
 			if( state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.ExitingPlayMode )
@@ -385,7 +335,6 @@ namespace InspectPlusNamespace
 					HierarchyWindowSelectionChanged( hierarchyWindow.GetTreeView().GetSelection() );
 			}
 		}
-#endif
 
 		private void RefreshSettings()
 		{
@@ -724,11 +673,7 @@ namespace InspectPlusNamespace
 							newTab.titleContent = windowTitle;
 							newTab.minSize = windowMinSize;
 
-#if UNITY_2018_3_OR_NEWER
 							dockAreaAddTabMethod.Invoke( dockArea, new object[2] { newTab, true } );
-#else
-							dockAreaAddTabMethod.Invoke( dockArea, new object[1] { newTab } );
-#endif
 
 							newTab.InspectInternal( obj, true );
 							newTab.ShowTab();
@@ -778,11 +723,7 @@ namespace InspectPlusNamespace
 			debugModeDrawerCount = 0;
 			debugModeRefreshTime = 0f;
 
-#if UNITY_2017_1_OR_NEWER
 			AssetImporterEditor _inspectorAssetDrawer = null;
-#else
-			Editor _inspectorAssetDrawer = null;
-#endif
 			if( !string.IsNullOrEmpty( assetPath ) && AssetDatabase.IsMainAsset( obj ) && !AssetDatabase.IsValidFolder( assetPath ) )
 			{
 				if( inspectorAssetDrawer )
@@ -797,41 +738,22 @@ namespace InspectPlusNamespace
 					AssetImporter assetImporter = AssetImporter.GetAtPath( AssetDatabase.GetAssetPath( obj ) );
 					if( assetImporter )
 					{
-#if UNITY_2017_1_OR_NEWER
 						ILogHandler unityLogHandler = Debug.unityLogger.logHandler;
-#else
-						ILogHandler unityLogHandler = Debug.logger.logHandler;
-#endif
 						Editor assetImporterEditor;
 						try
 						{
 							// Creating AssetImporterEditors manually doesn't set the editor's "m_AssetEditor" field automatically for some reason,
 							// it can result in exceptions being thrown in the AssetImporterEditors' Awake and/or OnEnable functions, ignore them
-#if UNITY_2017_1_OR_NEWER
 							Debug.unityLogger.logHandler = dummyLogHandler;
-#else
-							Debug.logger.logHandler = dummyLogHandler;
-#endif
 							assetImporterEditor = Editor.CreateEditor( assetImporter );
 						}
 						finally
 						{
-#if UNITY_2017_1_OR_NEWER
 							Debug.unityLogger.logHandler = unityLogHandler;
-#else
-							Debug.logger.logHandler = unityLogHandler;
-#endif
 						}
 
 						if( assetImporterEditor )
-						{
-#if UNITY_2017_1_OR_NEWER
 							_inspectorAssetDrawer = assetImporterEditor as AssetImporterEditor;
-#else
-							if( assetImporterEditorType.IsAssignableFrom( assetImporterEditor.GetType() ) )
-								_inspectorAssetDrawer = assetImporterEditor;
-#endif
-						}
 
 						if( !_inspectorAssetDrawer )
 							DestroyImmediate( assetImporterEditor );
@@ -839,13 +761,7 @@ namespace InspectPlusNamespace
 						{
 							Editor objEditor = Editor.CreateEditor( obj );
 							if( objEditor )
-							{
-#if UNITY_2018_1_OR_NEWER
 								assetImporterEditorSetterMethod.Invoke( _inspectorAssetDrawer, new object[1] { objEditor } );
-#else
-								assetImporterEditorField.SetValue( _inspectorAssetDrawer, objEditor );
-#endif
-							}
 						}
 					}
 				}
@@ -863,11 +779,7 @@ namespace InspectPlusNamespace
 			else
 				showHierarchyWindow = false;
 
-#if UNITY_2017_1_OR_NEWER
 			if( !inspectorAssetDrawer || inspectorAssetDrawer.showImportedObject )
-#else
-			if( !inspectorAssetDrawer || (bool) assetImporterShowImportedObjectProperty.GetValue( inspectorAssetDrawer, null ) )
-#endif
 			{
 				if( !showHierarchyWindow && obj is GameObject )
 				{
@@ -915,7 +827,6 @@ namespace InspectPlusNamespace
 			}
 
 			// Change tab's title to inspected object's name (title's tooltip should display object's path)
-#if UNITY_2019_3_OR_NEWER
 			string titleTooltip;
 			if( !string.IsNullOrEmpty( assetPath ) )
 				titleTooltip = assetPath;
@@ -938,14 +849,11 @@ namespace InspectPlusNamespace
 					};
 				}
 			}
-#endif
 
 			GUIContent tabTitle = new GUIContent( EditorGUIUtility.ObjectContent( obj, obj.GetType() ) )
 			{
 				text = obj.name,
-#if UNITY_2019_3_OR_NEWER
 				tooltip = string.Concat( titleTooltip, " (", obj.GetType().Name, ")" )
-#endif
 			};
 
 			if( showHierarchyWindow )
@@ -1016,10 +924,8 @@ namespace InspectPlusNamespace
 				favoritesRefreshTime = time + FAVORITES_REFRESH_INTERVAL;
 			}
 
-#if UNITY_2017_1_OR_NEWER
 			if( inspectorAssetDrawer && inspectorAssetDrawer.RequiresConstantRepaint() )
 				shouldRepaint = true;
-#endif
 
 			if( AnimationMode.InAnimationMode() && time >= nextAnimationRepaintTime )
 			{
@@ -1103,10 +1009,8 @@ namespace InspectPlusNamespace
 		#region GUI Functions
 		private void OnGUI()
 		{
-#if UNITY_2017_2_OR_NEWER
 			if( changingPlayMode )
 				return;
-#endif
 
 			Event ev = Event.current;
 			if( InspectPlusSettings.Instance.CompactFavoritesAndHistoryLists )
@@ -1197,10 +1101,6 @@ namespace InspectPlusNamespace
 
 						Rect importedObjectHeaderRect = GUILayoutUtility.GetRect( 0f, 100000f, 21f, 21f );
 						GUI.Box( importedObjectHeaderRect, "Imported Object" );
-
-#if !UNITY_2019_3_OR_NEWER
-						GUILayout.Space( -7 ); // Get rid of the space before the firstDrawer's header
-#endif
 					}
 				}
 
@@ -1210,11 +1110,7 @@ namespace InspectPlusNamespace
 						inspectorDrawers[0].DrawHeader();
 
 					// Get rid of the free space above the project window's header
-#if UNITY_2019_3_OR_NEWER
 					GUILayout.Space( -3 );
-#else
-					GUILayout.Space( -4 );
-#endif
 
 					projectWindow.OnGUI();
 
@@ -1233,15 +1129,8 @@ namespace InspectPlusNamespace
 					if( inspectorDrawerCount > 0 )
 						inspectorDrawers[0].DrawHeader();
 
-
 					// Avoid overlapping hierarchy window's header
-#if UNITY_2019_3_OR_NEWER
 					GUILayout.Space( -3 );
-#elif UNITY_2018_2_OR_NEWER
-					GUILayout.Space( -5 );
-#else
-					GUILayout.Space( 3 );
-#endif
 
 					hierarchyWindow.OnGUI();
 
@@ -1283,11 +1172,7 @@ namespace InspectPlusNamespace
 					// Show Add Component button
 					if( addComponentButton != null && mainObject is GameObject )
 					{
-#if UNITY_2018_3_OR_NEWER
 						if( !PrefabUtility.IsPartOfImmutablePrefab( mainObject ) || !AssetDatabase.Contains( mainObject ) )
-#else
-						if( PrefabUtility.GetPrefabType( mainObject ) != PrefabType.ModelPrefab )
-#endif
 						{
 							GUILayout.Space( 10 );
 
@@ -1681,13 +1566,7 @@ namespace InspectPlusNamespace
 				if( previewHeaderGuiStyle == null )
 					previewHeaderGuiStyle = EditorStyles.toolbar;
 				if( previewResizeAreaGuiStyle == null )
-				{
-#if UNITY_2019_3_OR_NEWER
 					previewResizeAreaGuiStyle = GUI.skin.horizontalScrollbarThumb;
-#else
-					previewResizeAreaGuiStyle = EditorStyles.helpBox;
-#endif
-				}
 				if( previewBackgroundGuiStyle == null )
 					previewBackgroundGuiStyle = EditorStyles.toolbar;
 			}
@@ -1703,10 +1582,8 @@ namespace InspectPlusNamespace
 			{
 				Rect dragIconRect = new Rect( dragRect.x + PREVIEW_HEADER_PADDING, dragRect.y + ( PREVIEW_HEADER_HEIGHT - previewResizeAreaGuiStyle.fixedHeight ) * 0.5f - 1f,
 					dragRect.width - 2f * PREVIEW_HEADER_PADDING, previewResizeAreaGuiStyle.fixedHeight );
-#if UNITY_2019_3_OR_NEWER
-				dragIconRect.y++;
-#endif
 
+				dragIconRect.y++;
 				previewResizeAreaGuiStyle.Draw( dragIconRect, GUIContent.none, false, false, false, false );
 			}
 
@@ -1925,11 +1802,7 @@ namespace InspectPlusNamespace
 			projectWindowSelectionEditor = null;
 		}
 
-#if UNITY_2017_1_OR_NEWER
 		private void SetInspectorAssetDrawer( AssetImporterEditor assetDrawer )
-#else
-		private void SetInspectorAssetDrawer( Editor assetDrawer )
-#endif
 		{
 			if( inspectorAssetDrawer == assetDrawer )
 				return;
@@ -1938,7 +1811,7 @@ namespace InspectPlusNamespace
 			{
 #if UNITY_2022_2_OR_NEWER
 				inspectorAssetDrawer.DiscardChanges();
-#elif UNITY_2019_2_OR_NEWER
+#else
 				// On newer Unity versions, unfortunately the Apply/Revert dialog isn't displayed automatically when we stop inspecting an asset in Inspect+,
 				// so we must show the Apply/Revert dialog manually and as long as user presses Cancel, continue showing the dialog
 				bool applyRevertFinished;

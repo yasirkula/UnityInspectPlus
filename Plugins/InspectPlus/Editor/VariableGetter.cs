@@ -9,7 +9,7 @@ namespace InspectPlusNamespace
 	public delegate void VariableSetVal( object obj, object value );
 
 	// Custom struct to hold a variable's description and its getter function
-	public struct VariableGetterHolder : IComparable<VariableGetterHolder>
+	public readonly struct VariableGetterHolder : IComparable<VariableGetterHolder>
 	{
 		public readonly string description;
 		public readonly Type type;
@@ -202,7 +202,7 @@ namespace InspectPlusNamespace
 	}
 
 	// Using constant values in VariableGetterHolder
-	public struct ConstantValueGetter
+	public readonly struct ConstantValueGetter
 	{
 		private readonly object value;
 

@@ -201,12 +201,10 @@ namespace InspectPlusNamespace
 				newValue = EditorGUILayout.Vector3Field( GUIContent.none, (Vector3) Obj );
 			else if( Obj is Vector2 )
 				newValue = EditorGUILayout.Vector2Field( GUIContent.none, (Vector2) Obj );
-#if UNITY_2017_2_OR_NEWER
 			else if( Obj is Vector3Int )
 				newValue = EditorGUILayout.Vector3IntField( GUIContent.none, (Vector3Int) Obj );
 			else if( Obj is Vector2Int )
 				newValue = EditorGUILayout.Vector2IntField( GUIContent.none, (Vector2Int) Obj );
-#endif
 			else if( Obj is Vector4 )
 				newValue = EditorGUILayout.Vector4Field( GUIContent.none, (Vector4) Obj );
 			else if( Obj is Quaternion )
@@ -223,12 +221,10 @@ namespace InspectPlusNamespace
 				newValue = EditorGUILayout.RectField( GUIContent.none, (Rect) Obj );
 			else if( Obj is Bounds )
 				newValue = EditorGUILayout.BoundsField( GUIContent.none, (Bounds) Obj );
-#if UNITY_2017_2_OR_NEWER
 			else if( Obj is RectInt )
 				newValue = EditorGUILayout.RectIntField( GUIContent.none, (RectInt) Obj );
 			else if( Obj is BoundsInt )
 				newValue = EditorGUILayout.BoundsIntField( GUIContent.none, (BoundsInt) Obj );
-#endif
 			else if( Obj is AnimationCurve )
 				newValue = EditorGUILayout.CurveField( GUIContent.none, (AnimationCurve) Obj );
 			else if( Obj is Gradient )
@@ -258,14 +254,8 @@ namespace InspectPlusNamespace
 						if( _parent.Obj is Component )
 							Undo.RecordObject( ( (Component) _parent.Obj ).gameObject, "Change Value" ); // Required for at least name and tag properties
 
-#if UNITY_2018_3_OR_NEWER
 						if( PrefabUtility.IsPartOfPrefabInstance( (Object) _parent.Obj ) )
-#else
-						if( PrefabUtility.GetPrefabParent( (Object) _parent.Obj ) )
-#endif
-						{
 							modifiedPrefabInstance = _parent.Obj as Object;
-						}
 
 						break;
 					}
@@ -320,7 +310,7 @@ namespace InspectPlusNamespace
 
 	public class DebugModeEnumerableEntry : DebugModeEntry
 	{
-		private struct EnumerableValueWrapper
+		private readonly struct EnumerableValueWrapper
 		{
 			public readonly DebugModeEnumerableEntry entry;
 			public readonly int index;
