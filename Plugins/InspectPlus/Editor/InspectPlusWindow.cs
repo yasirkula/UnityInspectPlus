@@ -152,6 +152,28 @@ namespace InspectPlusNamespace
 		private GUILayoutOption previewHeaderHeight;
 		private GUILayoutOption scrollableListIconSize;
 
+		private static GUIStyle m_boxGUIStyle;
+		public static GUIStyle BoxGUIStyle
+		{
+			get
+			{
+				if( m_boxGUIStyle == null )
+				{
+					m_boxGUIStyle = new GUIStyle( EditorStyles.helpBox )
+					{
+						alignment = TextAnchor.MiddleCenter,
+						font = EditorStyles.label.font,
+						fontSize = EditorStyles.label.fontSize,
+						richText = true,
+					};
+
+					m_boxGUIStyle.normal.textColor = m_boxGUIStyle.hover.textColor = m_boxGUIStyle.focused.textColor = m_boxGUIStyle.active.textColor = EditorStyles.miniButton.normal.textColor;
+				}
+
+				return m_boxGUIStyle;
+			}
+		}
+
 		#region Initializers
 		[InitializeOnLoadMethod]
 		private static void Initialize()
@@ -1149,7 +1171,7 @@ namespace InspectPlusNamespace
 
 			if( debugMode )
 			{
-				GUILayout.Box( "(F)ield, (P)roperty, (M)ethod, (S)tatic, (O)bsolete\n(+)Public, (#)Protected/Internal, (-)Private", expandWidth );
+				GUILayout.Box( "(F)ield, (P)roperty, (M)ethod, (S)tatic, (O)bsolete\n(+)Public, (#)Protected/Internal, (-)Private", BoxGUIStyle, expandWidth );
 
 				for( int i = 0; i < debugModeDrawerCount; i++ )
 					debugModeDrawers[i].DrawOnGUI( debugModeDrawerCount == 1 );
@@ -1267,8 +1289,7 @@ namespace InspectPlusNamespace
 						if( PrefabUtility.GetPrefabType( mainObject ) != PrefabType.ModelPrefab )
 #endif
 						{
-							GUILayout.Space( 5 );
-							DrawHorizontalLine();
+							GUILayout.Space( 10 );
 
 							Rect rect = GUILayoutUtility.GetRect( addComponentButtonLabel, GUI.skin.button, addComponentButtonHeight );
 							if( EditorGUI.DropdownButton( rect, addComponentButtonLabel, FocusType.Passive, GUI.skin.button ) )
@@ -1774,11 +1795,6 @@ namespace InspectPlusNamespace
 		{
 			EditorGUIUtility.wideMode = windowWidth > 330f;
 			EditorGUIUtility.labelWidth = windowWidth < 350f ? 130f : windowWidth * 0.4f;
-		}
-
-		private void DrawHorizontalLine()
-		{
-			GUILayout.Box( "", expandWidth, horizontalLineHeight );
 		}
 		#endregion
 
