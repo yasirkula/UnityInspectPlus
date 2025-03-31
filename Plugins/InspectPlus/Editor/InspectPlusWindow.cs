@@ -1065,8 +1065,12 @@ namespace InspectPlusNamespace
 			{
 				GUILayout.Box( "(F)ield, (P)roperty, (M)ethod, (S)tatic, (O)bsolete\n(+)Public, (#)Protected/Internal, (-)Private", BoxGUIStyle, expandWidth );
 
+				// While inspecting a single object, keep its debug mode drawer expanded
+				if( debugModeDrawerCount == 1 )
+					debugModeDrawers[0].IsExpanded = true;
+
 				for( int i = 0; i < debugModeDrawerCount; i++ )
-					debugModeDrawers[i].DrawOnGUI( debugModeDrawerCount == 1 );
+					debugModeDrawers[i].DrawOnGUI();
 			}
 			else
 			{

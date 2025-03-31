@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
@@ -22,9 +23,9 @@ namespace InspectPlusNamespace
 				else
 				{
 					Obj = null;
-					label = Variable.description;
 					forceShowNestedVariables = false;
 					PoolLists();
+					RefreshLabel();
 				}
 			}
 		}
@@ -32,12 +33,14 @@ namespace InspectPlusNamespace
 		public VariableGetterHolder Variable;
 		public object Obj;
 		protected DebugModeEntry parent;
-		protected string label;
+		protected readonly GUIContent guiContent = new();
 		protected string primitiveValue;
 
 		protected DebugModeEnumerableEntry enumerableRoot;
 		protected List<DebugModeEntry> variables;
 		private bool forceShowNestedVariables;
+
+		private string searchTerm;
 
 		private static readonly Stack<List<DebugModeEntry>> pool = new Stack<List<DebugModeEntry>>( 32 );
 
@@ -46,10 +49,26 @@ namespace InspectPlusNamespace
 			this.parent = parent;
 		}
 
-		public virtual void Refresh()
+		public void SetSearchTerm( string searchTerm )
 		{
-			label = Variable.description;
+			if( searchTerm == string.Empty )
+				searchTerm = null;
 
+			if( this.searchTerm != searchTerm )
+			{
+				this.searchTerm = searchTerm;
+				RefreshLabel();
+			}
+		}
+
+		public void Refresh()
+		{
+			RefreshInternal();
+			RefreshLabel();
+		}
+
+		protected virtual void RefreshInternal()
+		{
 			if( m_isExpanded )
 			{
 				Type prevType = Obj != null ? Obj.GetType() : null;
@@ -61,10 +80,6 @@ namespace InspectPlusNamespace
 				{
 					if( Obj.GetType() != prevType )
 						PoolLists();
-
-					/// If <see cref="Obj"/>'s Type is different than <see cref="VariableGetterHolder.type"/>, it's useful to show it in Inspector so that we can see exactly what we're inspecting.
-					if( Obj is not Object && Obj.GetType() != Variable.type )
-						label = Utilities.stringBuilder.Clear().Append( Variable.description ).Append( " -> " ).AppendType( Obj.GetType() ).ToString();
 
 					// Cache ToString() values of primitives since they won't change until next Refresh
 					primitiveValue = Obj.GetType().IsPrimitiveUnityType() ? Obj.ToString() : null;
@@ -99,14 +114,43 @@ namespace InspectPlusNamespace
 			}
 		}
 
+		private void RefreshLabel()
+		{
+			guiContent.text = Variable.description;
+
+			/// If <see cref="Obj"/>'s Type is different than <see cref="VariableGetterHolder.type"/>, it's useful to show it in Inspector so that we can see exactly what we're inspecting.
+			bool showObjType = Obj != null && Obj is not Object && Obj.GetType() != Variable.type;
+			if( showObjType || !string.IsNullOrEmpty( searchTerm ) )
+			{
+				StringBuilder sb = Utilities.stringBuilder.Clear().Append( Variable.description );
+				if( showObjType )
+					sb.Append( " -> " ).AppendType( Obj.GetType() );
+
+				if( !string.IsNullOrEmpty( searchTerm ) )
+					sb.Append( " [Search: " ).Append( searchTerm ).Append( ']' );
+
+				guiContent.text = sb.ToString();
+			}
+		}
+
 		public void DrawOnGUI( bool flattenChildren = false )
 		{
-			if( flattenChildren && !IsExpanded )
-				IsExpanded = true;
+			if( flattenChildren )
+			{
+				if( !m_isExpanded )
+					IsExpanded = true;
+
+				searchTerm = parent?.searchTerm;
+			}
+			else
+			{
+				if( !string.IsNullOrEmpty( parent?.searchTerm ) && !guiContent.text.ContainsIgnoreCase( parent.searchTerm ) )
+					return;
+			}
 
 			if( m_isExpanded )
 			{
-				if( !flattenChildren && !EditorGUILayout.Foldout( true, label, true ) )
+				if( !flattenChildren && !DrawFoldout() )
 				{
 					IsExpanded = false;
 					GUIUtility.ExitGUI();
@@ -140,12 +184,29 @@ namespace InspectPlusNamespace
 			}
 			else
 			{
-				if( EditorGUILayout.Foldout( false, label, true ) )
+				if( DrawFoldout() )
 				{
 					IsExpanded = true;
 					GUIUtility.ExitGUI();
 				}
 			}
+		}
+
+		private bool DrawFoldout()
+		{
+			Rect rect = GUILayoutUtility.GetRect( EditorGUIUtility.fieldWidth, EditorGUIUtility.fieldWidth, EditorGUIUtility.singleLineHeight, EditorGUIUtility.singleLineHeight, EditorStyles.foldout );
+			bool isExpanded = EditorGUI.Foldout( rect, m_isExpanded, guiContent, true, EditorStyles.foldout );
+			if( Event.current.type == EventType.MouseDown && Event.current.button == 1 && rect.Contains( Event.current.mousePosition ) )
+			{
+				GenericMenu menu = new();
+				menu.AddItem( new GUIContent( "Search" ), false, () => StringInputDialog.Show( "Enter search term:", searchTerm, SetSearchTerm ) );
+				if( !string.IsNullOrEmpty( searchTerm ) )
+					menu.AddItem( new GUIContent( "Reset Search" ), false, () => SetSearchTerm( null ) );
+
+				menu.ShowAsContext();
+			}
+
+			return isExpanded;
 		}
 
 		private bool DrawValueOnGUI()
@@ -336,7 +397,7 @@ namespace InspectPlusNamespace
 		{
 		}
 
-		public override void Refresh()
+		protected override void RefreshInternal()
 		{
 			if( m_isExpanded )
 			{
