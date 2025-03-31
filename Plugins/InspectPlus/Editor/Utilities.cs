@@ -23,6 +23,25 @@ namespace InspectPlusNamespace
 #endif
 		};
 
+		private static readonly Dictionary<Type, string> typeNamesLookup = new Dictionary<Type, string>
+		{
+			{ typeof(bool), "bool" },
+			{ typeof(byte), "byte" },
+			{ typeof(char), "char" },
+			{ typeof(decimal), "decimal" },
+			{ typeof(double), "double" },
+			{ typeof(float), "float" },
+			{ typeof(int), "int" },
+			{ typeof(long), "long" },
+			{ typeof(object), "object" },
+			{ typeof(sbyte), "sbyte" },
+			{ typeof(short), "short" },
+			{ typeof(string), "string" },
+			{ typeof(uint), "uint" },
+			{ typeof(ulong), "ulong" },
+			{ typeof(void), "void" }
+		};
+
 		private static readonly HashSet<string> obsoleteComponentAccessors = new HashSet<string>()
 		{
 			"rigidbody", "rigidbody2D", "camera", "light", "animation", "constantForce", "renderer", "audio", "guiText",
@@ -279,6 +298,51 @@ namespace InspectPlusNamespace
 
 			// The type just couldn't be found...
 			return null;
+		}
+
+		public static StringBuilder AppendType( this StringBuilder sb, Type type )
+		{
+			bool isCompilerGeneratedType = false;
+			if( !typeNamesLookup.TryGetValue( type, out string name ) )
+			{
+				name = type.Name;
+
+				if( name.StartsWith( '<' ) && type.DeclaringType is Type declaringType )
+				{
+					isCompilerGeneratedType = true;
+					type = declaringType;
+					name = declaringType.Name;
+				}
+			}
+
+			if( !type.IsGenericType )
+				sb.Append( name );
+			else
+			{
+				int excludeIndex = name.IndexOf( '`' );
+				if( excludeIndex > 0 )
+					sb.Append( name, 0, excludeIndex );
+				else
+					sb.Append( name );
+
+				sb.Append( "<" );
+
+				Type[] arguments = type.GetGenericArguments();
+				for( int i = 0; i < arguments.Length; i++ )
+				{
+					sb.AppendType( arguments[i] );
+
+					if( i < arguments.Length - 1 )
+						sb.Append( "," );
+				}
+
+				sb.Append( ">" );
+			}
+
+			if( isCompilerGeneratedType )
+				sb.Append( "<(CompilerGenerated)>" );
+
+			return sb;
 		}
 
 		// Get <get> and <set> functions for a field

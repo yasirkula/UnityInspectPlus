@@ -22,6 +22,7 @@ namespace InspectPlusNamespace
 				else
 				{
 					Obj = null;
+					label = Variable.description;
 					forceShowNestedVariables = false;
 					PoolLists();
 				}
@@ -31,6 +32,7 @@ namespace InspectPlusNamespace
 		public VariableGetterHolder Variable;
 		public object Obj;
 		protected DebugModeEntry parent;
+		protected string label;
 		protected string primitiveValue;
 
 		protected DebugModeEnumerableEntry enumerableRoot;
@@ -46,6 +48,8 @@ namespace InspectPlusNamespace
 
 		public virtual void Refresh()
 		{
+			label = Variable.description;
+
 			if( m_isExpanded )
 			{
 				Type prevType = Obj != null ? Obj.GetType() : null;
@@ -57,6 +61,10 @@ namespace InspectPlusNamespace
 				{
 					if( Obj.GetType() != prevType )
 						PoolLists();
+
+					/// If <see cref="Obj"/>'s Type is different than <see cref="VariableGetterHolder.type"/>, it's useful to show it in Inspector so that we can see exactly what we're inspecting.
+					if( Obj is not Object && Obj.GetType() != Variable.type )
+						label = Utilities.stringBuilder.Clear().Append( Variable.description ).Append( " -> " ).AppendType( Obj.GetType() ).ToString();
 
 					// Cache ToString() values of primitives since they won't change until next Refresh
 					primitiveValue = Obj.GetType().IsPrimitiveUnityType() ? Obj.ToString() : null;
@@ -98,7 +106,7 @@ namespace InspectPlusNamespace
 
 			if( m_isExpanded )
 			{
-				if( !flattenChildren && !EditorGUILayout.Foldout( true, Variable.description, true ) )
+				if( !flattenChildren && !EditorGUILayout.Foldout( true, label, true ) )
 				{
 					IsExpanded = false;
 					GUIUtility.ExitGUI();
@@ -132,7 +140,7 @@ namespace InspectPlusNamespace
 			}
 			else
 			{
-				if( EditorGUILayout.Foldout( false, Variable.description, true ) )
+				if( EditorGUILayout.Foldout( false, label, true ) )
 				{
 					IsExpanded = true;
 					GUIUtility.ExitGUI();

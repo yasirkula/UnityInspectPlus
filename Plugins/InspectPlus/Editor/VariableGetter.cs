@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 
@@ -12,25 +11,6 @@ namespace InspectPlusNamespace
 	// Custom struct to hold a variable's description and its getter function
 	public struct VariableGetterHolder : IComparable<VariableGetterHolder>
 	{
-		private static readonly Dictionary<Type, string> typeNamesLookup = new Dictionary<Type, string>
-		{
-			{ typeof(bool), "bool" },
-			{ typeof(byte), "byte" },
-			{ typeof(char), "char" },
-			{ typeof(decimal), "decimal" },
-			{ typeof(double), "double" },
-			{ typeof(float), "float" },
-			{ typeof(int), "int" },
-			{ typeof(long), "long" },
-			{ typeof(object), "object" },
-			{ typeof(sbyte), "sbyte" },
-			{ typeof(short), "short" },
-			{ typeof(string), "string" },
-			{ typeof(uint), "uint" },
-			{ typeof(ulong), "ulong" },
-			{ typeof(void), "void" }
-		};
-
 		public readonly string description;
 		public readonly Type type;
 		private readonly string name;
@@ -66,9 +46,7 @@ namespace InspectPlusNamespace
 			if( Attribute.IsDefined( fieldInfo, typeof( ObsoleteAttribute ) ) )
 				sb.Append( "(O)" );
 
-			sb.Append( " " ).Append( fieldInfo.Name ).Append( " (" );
-			AppendTypeToDescription( sb, type );
-			sb.Append( ")" );
+			sb.Append( " " ).Append( fieldInfo.Name ).Append( " (" ).AppendType( type ).Append( ")" );
 
 			this.description = sb.ToString();
 			this.name = fieldInfo.Name;
@@ -97,9 +75,7 @@ namespace InspectPlusNamespace
 			if( Attribute.IsDefined( propertyInfo, typeof( ObsoleteAttribute ) ) )
 				sb.Append( "(O)" );
 
-			sb.Append( " " ).Append( propertyInfo.Name ).Append( " (" );
-			AppendTypeToDescription( sb, type );
-			sb.Append( ")" );
+			sb.Append( " " ).Append( propertyInfo.Name ).Append( " (" ).AppendType( type ).Append( ")" );
 
 			this.description = sb.ToString();
 			this.name = propertyInfo.Name;
@@ -127,45 +103,12 @@ namespace InspectPlusNamespace
 			if( Attribute.IsDefined( methodInfo, typeof( ObsoleteAttribute ) ) )
 				sb.Append( "(O)" );
 
-			sb.Append( " " ).Append( methodInfo.Name ).Append( "() (" );
-			AppendTypeToDescription( sb, type );
-			sb.Append( ")" );
+			sb.Append( " " ).Append( methodInfo.Name ).Append( "() (" ).AppendType( type ).Append( ")" );
 
 			this.description = sb.ToString();
 			this.name = methodInfo.Name;
 			this.getter = getter;
 			this.setter = null;
-		}
-
-		private static void AppendTypeToDescription( StringBuilder sb, Type type )
-		{
-			string name;
-			if( !typeNamesLookup.TryGetValue( type, out name ) )
-				name = type.Name;
-
-			if( !type.IsGenericType )
-				sb.Append( name );
-			else
-			{
-				int excludeIndex = name.IndexOf( '`' );
-				if( excludeIndex > 0 )
-					sb.Append( name, 0, excludeIndex );
-				else
-					sb.Append( name );
-
-				sb.Append( "<" );
-
-				Type[] arguments = type.GetGenericArguments();
-				for( int i = 0; i < arguments.Length; i++ )
-				{
-					AppendTypeToDescription( sb, arguments[i] );
-
-					if( i < arguments.Length - 1 )
-						sb.Append( "," );
-				}
-
-				sb.Append( ">" );
-			}
 		}
 
 		public object Get( object obj )
