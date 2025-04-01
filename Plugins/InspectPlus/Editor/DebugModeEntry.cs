@@ -17,6 +17,9 @@ namespace InspectPlusNamespace
 			get { return m_isExpanded; }
 			set
 			{
+				if( m_isExpanded == value )
+					return;
+
 				m_isExpanded = value;
 				if( m_isExpanded )
 					Refresh();
@@ -137,9 +140,7 @@ namespace InspectPlusNamespace
 		{
 			if( flattenChildren )
 			{
-				if( !m_isExpanded )
-					IsExpanded = true;
-
+				IsExpanded = true;
 				searchTerm = parent?.searchTerm;
 			}
 			else
