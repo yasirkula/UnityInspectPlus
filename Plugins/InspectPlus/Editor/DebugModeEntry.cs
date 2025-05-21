@@ -383,12 +383,12 @@ namespace InspectPlusNamespace
 				this.index = index;
 			}
 
-			public object GetValue( object obj )
+			public readonly object GetValue( object obj )
 			{
 				return entry.GetEnumerableValue( index );
 			}
 
-			public void SetValue( object obj, object value )
+			public readonly void SetValue( object obj, object value )
 			{
 				entry.SetEnumerableValue( index, value );
 			}

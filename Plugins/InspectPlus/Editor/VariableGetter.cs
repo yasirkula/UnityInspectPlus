@@ -111,18 +111,18 @@ namespace InspectPlusNamespace
 			this.setter = null;
 		}
 
-		public object Get( object obj )
+		public readonly object Get( object obj )
 		{
 			return getter( obj );
 		}
 
-		public void Set( object obj, object value )
+		public readonly void Set( object obj, object value )
 		{
 			if( setter != null )
 				setter( obj, value );
 		}
 
-		int IComparable<VariableGetterHolder>.CompareTo( VariableGetterHolder other )
+		readonly int IComparable<VariableGetterHolder>.CompareTo( VariableGetterHolder other )
 		{
 			return name.CompareTo( other.name );
 		}
@@ -211,7 +211,7 @@ namespace InspectPlusNamespace
 			this.value = value;
 		}
 
-		public object GetValue( object obj )
+		public readonly object GetValue( object obj )
 		{
 			return value;
 		}
