@@ -85,7 +85,11 @@ namespace InspectPlusNamespace
 						PoolLists();
 
 					// Cache ToString() values of primitives since they won't change until next Refresh
-					primitiveValue = Obj.GetType().IsPrimitiveUnityType() ? Obj.ToString() : null;
+					primitiveValue = null;
+					if( Obj.GetType().IsPrimitiveUnityType() )
+						primitiveValue = Obj.ToString();
+					else if( Obj is Type runtimeType )
+						primitiveValue = Utilities.stringBuilder.Clear().AppendType( runtimeType ).ToString();
 
 					if( Obj is IEnumerable && !( Obj is Transform ) )
 					{

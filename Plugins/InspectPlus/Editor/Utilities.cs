@@ -49,7 +49,6 @@ namespace InspectPlusNamespace
 
 		private static readonly List<VariableGetterHolder> validVariables = new List<VariableGetterHolder>( 32 );
 		private static readonly Dictionary<Type, VariableGetterHolder[]> typeToVariables = new Dictionary<Type, VariableGetterHolder[]>( 1024 );
-		private static readonly string reflectionNameSpace = typeof( Assembly ).Namespace;
 		private static readonly CompareInfo caseInsensitiveComparer = new CultureInfo( "en-US" ).CompareInfo;
 		public static readonly StringBuilder stringBuilder = new StringBuilder( 256 );
 
@@ -122,10 +121,6 @@ namespace InspectPlusNamespace
 					FieldInfo field = fields[i];
 					Type variableType = field.FieldType;
 
-					// Assembly variables can throw InvalidCastException on .NET 4.0 runtime
-					if( typeof( Type ).IsAssignableFrom( variableType ) || variableType.Namespace == reflectionNameSpace )
-						continue;
-
 					// Pointers and ref variables can throw ArgumentException
 					if( variableType.IsPointer || variableType.IsByRef )
 						continue;
@@ -151,10 +146,6 @@ namespace InspectPlusNamespace
 				{
 					PropertyInfo property = properties[i];
 					Type variableType = property.PropertyType;
-
-					// Assembly variables can throw InvalidCastException on .NET 4.0 runtime
-					if( typeof( Type ).IsAssignableFrom( variableType ) || variableType.Namespace == reflectionNameSpace )
-						continue;
 
 					// Pointers and ref variables can throw ArgumentException
 					if( variableType.IsPointer || variableType.IsByRef )
@@ -224,10 +215,6 @@ namespace InspectPlusNamespace
 
 					// Skip functions that don't return anything
 					if( returnType == typeof( void ) )
-						continue;
-
-					// Assembly variables can throw InvalidCastException on .NET 4.0 runtime
-					if( typeof( Type ).IsAssignableFrom( returnType ) || returnType.Namespace == reflectionNameSpace )
 						continue;
 
 					// Pointers and ref variables can throw ArgumentException
