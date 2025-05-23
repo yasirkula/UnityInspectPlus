@@ -113,7 +113,7 @@ namespace InspectPlusNamespace
 
 			// Filter the variables
 			Type currType = type;
-			while( currType != typeof( object ) )
+			while( currType != null && currType != typeof( object ) ) /// <see cref="Type.BaseType"/> of an interface is null, so null check is necessary
 			{
 				FieldInfo[] fields = currType.GetFields( bindingFlags );
 				for( int i = 0; i < fields.Length; i++ )
@@ -139,7 +139,7 @@ namespace InspectPlusNamespace
 			int validVariablesPrevCount = validVariables.Count;
 
 			currType = type;
-			while( currType != typeof( object ) )
+			while( currType != null && currType != typeof( object ) )
 			{
 				PropertyInfo[] properties = currType.GetProperties( bindingFlags );
 				for( int i = 0; i < properties.Length; i++ )
@@ -196,7 +196,7 @@ namespace InspectPlusNamespace
 			validVariablesPrevCount = validVariables.Count;
 
 			currType = type;
-			while( currType != typeof( object ) )
+			while( currType != null && currType != typeof( object ) )
 			{
 				MethodInfo[] methods = currType.GetMethods( bindingFlags );
 				for( int i = 0; i < methods.Length; i++ )
