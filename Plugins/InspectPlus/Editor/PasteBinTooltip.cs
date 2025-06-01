@@ -23,11 +23,20 @@ namespace InspectPlusNamespace
 
 		public static void Show( Rect sourcePosition, string tooltip )
 		{
+            // Don't lose focus to the previous window (in this case, PasteBinContextWindow which automatically closes when it loses focus)
+            EditorWindow prevFocusedWindow = focusedWindow;
+
+            if (!mainWindow)
+            {
+                mainWindow = CreateInstance<PasteBinTooltip>();
+                mainWindow.ShowPopup();
+            }
+
 			Vector2 preferredSize = Style.CalcSize( new GUIContent( tooltip ) ) + Style.contentOffset + new Vector2( Style.padding.horizontal + Style.margin.horizontal, Style.padding.vertical + Style.margin.vertical );
 			Rect preferredPosition;
 
 			Rect positionLeft = new Rect( sourcePosition.position - new Vector2( preferredSize.x, 0f ), preferredSize );
-			Rect screenFittedPositionLeft = Utilities.GetScreenFittedRect( positionLeft );
+            Rect screenFittedPositionLeft = Utilities.GetScreenFittedRect(positionLeft, mainWindow);
 
 			Vector2 positionOffset = positionLeft.position - screenFittedPositionLeft.position;
 			Vector2 sizeOffset = positionLeft.size - screenFittedPositionLeft.size;
@@ -36,7 +45,7 @@ namespace InspectPlusNamespace
 			else
 			{
 				Rect positionRight = new Rect( sourcePosition.position + new Vector2( sourcePosition.width, 0f ), preferredSize );
-				Rect screenFittedPositionRight = Utilities.GetScreenFittedRect( positionRight );
+                Rect screenFittedPositionRight = Utilities.GetScreenFittedRect(positionRight, mainWindow);
 
 				Vector2 positionOffset2 = positionRight.position - screenFittedPositionRight.position;
 				Vector2 sizeOffset2 = positionRight.size - screenFittedPositionRight.size;
@@ -44,15 +53,6 @@ namespace InspectPlusNamespace
 					preferredPosition = screenFittedPositionRight;
 				else
 					preferredPosition = screenFittedPositionLeft;
-			}
-
-			// Don't lose focus to the previous window (in this case, PasteBinContextWindow which automatically closes when it loses focus)
-			EditorWindow prevFocusedWindow = focusedWindow;
-
-			if( !mainWindow )
-			{
-				mainWindow = CreateInstance<PasteBinTooltip>();
-				mainWindow.ShowPopup();
 			}
 
 			PasteBinTooltip.tooltip = tooltip;

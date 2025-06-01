@@ -240,7 +240,7 @@ namespace InspectPlusNamespace
 				if( preferredHeight > 10f )
 				{
 					Vector2 size = new Vector2( position.width, preferredHeight + 15f );
-					position = Utilities.GetScreenFittedRect( new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ) - size * 0.5f, size ) );
+                    position = Utilities.GetScreenFittedRect(new Rect(GUIUtility.GUIToScreenPoint(ev.mousePosition) - size * 0.5f, size), this);
 
 					shouldRepositionSelf = false;
 					GUIUtility.ExitGUI();

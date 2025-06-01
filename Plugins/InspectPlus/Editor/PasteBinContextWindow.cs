@@ -250,7 +250,7 @@ namespace InspectPlusNamespace
 					Vector2 size = new Vector2( position.width, preferredHeight + 15f );
 
 					if( shouldRepositionSelf )
-						position = Utilities.GetScreenFittedRect( new Rect( GUIUtility.GUIToScreenPoint( ev.mousePosition ) - size * 0.5f, size ) );
+                        position = Utilities.GetScreenFittedRect(new Rect(GUIUtility.GUIToScreenPoint(ev.mousePosition) - size * 0.5f, size), this);
 					else if( shouldResizeSelf )
 						position = new Rect( position.position, size );
 
