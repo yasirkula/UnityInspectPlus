@@ -257,8 +257,14 @@ namespace InspectPlusNamespace
 				newValue = EditorGUILayout.DelayedIntField( GUIContent.none, (int) Obj );
 			else if( Obj is float )
 				newValue = EditorGUILayout.DelayedFloatField( GUIContent.none, (float) Obj );
-			else if( Obj is string )
-				newValue = EditorGUILayout.DelayedTextField( GUIContent.none, (string) Obj );
+            else if (Obj is string stringValue)
+            {
+                // If String contains multiple lines, use flexible TextArea to render it. Otherwise, use a single-line TextField to render it. This way, the input can be submitted with Enter for single-line strings.
+                if (stringValue?.IndexOf('\n') >= 0)
+                    newValue = EditorGUILayout.TextArea(stringValue);
+                else
+                    newValue = EditorGUILayout.DelayedTextField(GUIContent.none, stringValue);
+            }
 			else if( Obj is double )
 				newValue = EditorGUILayout.DelayedDoubleField( GUIContent.none, (double) Obj );
 			else if( Obj is long )
@@ -297,7 +303,7 @@ namespace InspectPlusNamespace
 				newValue = PasteBinWindow.gradientField.Invoke( null, new object[] { GUIContent.none, (Gradient) Obj, null } );
 			else if( primitiveValue != null ) // Variable is primitive
 			{
-				EditorGUILayout.TextField( primitiveValue );
+                EditorGUILayout.TextArea(primitiveValue);
 
 				EditorGUI.EndChangeCheck();
 				return true;
