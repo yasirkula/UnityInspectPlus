@@ -115,6 +115,8 @@ namespace InspectPlusNamespace
 		private static GUIStyle previewBackgroundGuiStyle;
 
 		private bool debugMode;
+        private List<DebugModeEntry.SerializedData> debugModeSerializedData;
+
 		private double debugModeRefreshTime;
 		private double favoritesRefreshTime;
 
@@ -223,6 +225,14 @@ namespace InspectPlusNamespace
 			{
 				// This also makes sure that debug mode drawers are recreated
 				InspectInternal( mainObject, false );
+
+                if (debugModeSerializedData?.Count > 0)
+                {
+                    for (int i = 0; i < debugModeDrawerCount && i < debugModeSerializedData.Count; i++)
+                        debugModeDrawers[i].Deserialize(debugModeSerializedData[i]);
+
+                    debugModeSerializedData = null;
+                }
 			}
 			else
 			{
@@ -259,6 +269,12 @@ namespace InspectPlusNamespace
 
 			if( !mainObject )
 				CleanUpDrawers();
+            else if (debugMode)
+            {
+                debugModeSerializedData = new(debugModeDrawerCount);
+                for (int i = 0; i < debugModeDrawerCount; i++)
+                    debugModeSerializedData.Add(debugModeDrawers[i].Serialize());
+            }
 
 			if( mainWindow == this )
 				mainWindow = null;

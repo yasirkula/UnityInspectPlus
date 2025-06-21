@@ -11,6 +11,19 @@ namespace InspectPlusNamespace
 {
 	public class DebugModeEntry
 	{
+        [Serializable]
+        public class SerializedData
+        {
+            public bool IsExpanded;
+            public bool ForceShowNestedVariables;
+            public string SearchTerm;
+
+            [SerializeReference]
+            public List<SerializedData> Variables;
+            [SerializeReference]
+            public SerializedData EnumerableRoot;
+        }
+
 		protected bool m_isExpanded;
 		public bool IsExpanded
 		{
@@ -378,6 +391,36 @@ namespace InspectPlusNamespace
 				variables = null;
 			}
 		}
+
+        public SerializedData Serialize()
+        {
+            return new SerializedData()
+            {
+                IsExpanded = IsExpanded,
+                ForceShowNestedVariables = forceShowNestedVariables,
+                SearchTerm = searchTerm,
+                Variables = variables?.ConvertAll((e) => e.Serialize()),
+                EnumerableRoot = enumerableRoot?.Serialize(),
+            };
+        }
+
+        public void Deserialize(SerializedData data)
+        {
+            forceShowNestedVariables = data.ForceShowNestedVariables;
+            searchTerm = data.SearchTerm;
+            IsExpanded = data.IsExpanded;
+
+            Refresh();
+
+            if (variables != null && data.Variables != null)
+            {
+                for (int i = 0; i < variables.Count && i < data.Variables.Count; i++)
+                    variables[i].Deserialize(data.Variables[i]);
+            }
+
+            if (enumerableRoot != null && data.EnumerableRoot != null)
+                enumerableRoot.Deserialize(data.EnumerableRoot);
+        }
 	}
 
 	public class DebugModeEnumerableEntry : DebugModeEntry
