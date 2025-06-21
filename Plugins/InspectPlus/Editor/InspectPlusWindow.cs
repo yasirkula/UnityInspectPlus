@@ -39,7 +39,6 @@ namespace InspectPlusNamespace
 		private static readonly GUILayoutOption addComponentButtonHeight = GUILayout.Height( 30f );
 		private static MethodInfo addComponentButton;
 
-		private static readonly GUILayoutOption horizontalLineHeight = GUILayout.Height( 1f );
 		private static readonly GUILayoutOption zeroButtonHeight = GUILayout.Height( 0f );
 		private static readonly GUILayoutOption expandWidth = GUILayout.ExpandWidth( true );
 		private static readonly GUILayoutOption expandHeight = GUILayout.ExpandHeight( true );
