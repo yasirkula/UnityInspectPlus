@@ -1,4 +1,4 @@
-= Inspect+ (v2.0.5) =
+= Inspect+ (v2.0.6) =
 
 Documentation: https://github.com/yasirkula/UnityInspectPlus
 E-mail: yasirkula@gmail.com

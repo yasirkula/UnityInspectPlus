@@ -687,7 +687,7 @@ namespace InspectPlusNamespace
 
 							newTab.InspectInternal( obj, true );
 							newTab.ShowTab();
-							newTab.debugMode = debugModeOverride ?? false;
+                            newTab.debugMode = debugModeOverride ?? InspectPlusSettings.Instance.OpenNewTabsInDebugMode;
 
 							return;
 						}
