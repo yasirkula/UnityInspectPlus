@@ -687,7 +687,7 @@ namespace InspectPlusNamespace
 
 							newTab.InspectInternal( obj, true );
 							newTab.ShowTab();
-                            newTab.debugMode = debugModeOverride ?? InspectPlusSettings.Instance.OpenNewTabsInDebugMode;
+                            newTab.debugMode = ShouldEnableDebugMode();
 
 							return;
 						}
@@ -707,8 +707,21 @@ namespace InspectPlusNamespace
 			else
 				GetDefaultWindow().InspectInternal( obj, true );
 
-			if( debugModeOverride.HasValue )
-				mainWindow.debugMode = debugModeOverride.Value;
+            mainWindow.debugMode = ShouldEnableDebugMode();
+
+            bool ShouldEnableDebugMode()
+            {
+                if (debugModeOverride.HasValue)
+                    return debugModeOverride.Value;
+
+                if (!InspectPlusSettings.Instance.OpenNewTabsInDebugMode)
+                    return false;
+
+                if (mainWindow.showHierarchyWindow || mainWindow.showProjectWindow || mainWindow.inspectorAssetDrawer != null)
+                    return false;
+
+                return true;
+            }
 		}
 
 		private void InspectInternal( Object obj, bool addHistoryEntry )
