@@ -281,8 +281,17 @@ namespace InspectPlusNamespace
 
 		private void OnDestroy()
 		{
-			for( int i = 0; i < inspectorDrawers.Count; i++ )
-				DestroyImmediate( inspectorDrawers[i] );
+            for (int i = 0; i < inspectorDrawers.Count; i++)
+            {
+                try
+                {
+                    DestroyImmediate(inspectorDrawers[i]);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
 
 			inspectorDrawers.Clear();
 			inspectorDrawerCount = 0;
@@ -792,9 +801,17 @@ namespace InspectPlusNamespace
 
 			SetInspectorAssetDrawer( _inspectorAssetDrawer );
 
-			if( obj is IsolatedHierarchy )
-			{
-				hierarchyWindow.Show( ( (IsolatedHierarchy) obj ).rootTransform );
+            if (obj is IsolatedHierarchy isolatedHierarchy)
+            {
+                // If the target Transform is deleted, close this window to avoid MissingReferenceException spam
+                if (isolatedHierarchy.rootTransform == null)
+                {
+                    /// <see cref="EditorApplication.delayCall"/> is to avoid an internal NullReferenceException in EditorWindow class.
+                    EditorApplication.delayCall += () => Close();
+                    return;
+                }
+
+                hierarchyWindow.Show(isolatedHierarchy.rootTransform);
 				hierarchyWindow.GetTreeView().SyncSelection = syncHierarchyWindowSelection;
 
 				showHierarchyWindow = true;
