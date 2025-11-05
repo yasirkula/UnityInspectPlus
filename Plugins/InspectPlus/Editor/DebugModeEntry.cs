@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using UnityEditor;
 using UnityEditorInternal;
@@ -282,6 +283,8 @@ namespace InspectPlusNamespace
 				newValue = EditorGUILayout.DelayedDoubleField( GUIContent.none, (double) Obj );
 			else if( Obj is long )
 				newValue = EditorGUILayout.LongField( GUIContent.none, (long) Obj );
+            else if (Obj is decimal _decimal)
+                newValue = decimal.TryParse(EditorGUILayout.DelayedTextField(GUIContent.none, _decimal.ToString(CultureInfo.InvariantCulture)), NumberStyles.Float, CultureInfo.InvariantCulture, out decimal parsedDecimal) ? parsedDecimal : _decimal;
 			else if( Obj is Vector3 )
 				newValue = EditorGUILayout.Vector3Field( GUIContent.none, (Vector3) Obj );
 			else if( Obj is Vector2 )
