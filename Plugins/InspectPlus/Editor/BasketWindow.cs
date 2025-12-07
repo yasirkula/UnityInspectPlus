@@ -7,7 +7,16 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
-#if UNITY_6000_2_OR_NEWER
+#if UNITY_6000_3_OR_NEWER
+using EntityId = UnityEngine.EntityId;
+#else
+using EntityId = System.Int32;
+#endif
+#if UNITY_6000_3_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<UnityEngine.EntityId>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<UnityEngine.EntityId>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<UnityEngine.EntityId>;
+#elif UNITY_6000_2_OR_NEWER
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
@@ -49,12 +58,10 @@ namespace InspectPlusNamespace
 		private const string SAVE_DIRECTORY = "UserSettings/BasketWindows";
 		private const string ACTIVE_WINDOW_SAVE_FILE = SAVE_DIRECTORY + "/_ActiveWindow." + SAVE_FILE_EXTENSION;
 
-#pragma warning disable 0649
 		private BasketWindowDrawer treeView;
 		[SerializeField]
 		private BasketWindowState treeViewState = new BasketWindowState();
 		private SearchField searchField;
-#pragma warning restore 0649
 
 		private bool shouldRepositionSelf;
 		private bool isDataDirty;
@@ -282,7 +289,7 @@ namespace InspectPlusNamespace
 			// This happens only when the mouse click is not captured by the TreeView. In this case, clear its selection
 			if( Event.current.type == EventType.MouseDown && Event.current.button == 0 )
 			{
-				treeView.SetSelection( new int[0] );
+                treeView.SetSelection(new EntityId[0]);
 
 				Event.current.Use();
 				Repaint();
@@ -307,11 +314,9 @@ namespace InspectPlusNamespace
 
 	public abstract class BasketWindowEntry
 	{
-#pragma warning disable 0649
 		public Object Target;
 		public string Name = "Null";
-#pragma warning restore 0649
-		public int InstanceID { get { return ( Target != null ) ? Target.GetInstanceID() : GetHashCode(); } }
+        public EntityId InstanceID => (Target != null) ? Target.GetEntityId() : GetHashCode();
 
 		public BasketWindowEntry( Object target )
 		{
@@ -394,11 +399,9 @@ namespace InspectPlusNamespace
 	[Serializable]
 	public class BasketWindowState : TreeViewState
 	{
-#pragma warning disable 0649
 		public List<BasketWindowRootEntry> Entries = new List<BasketWindowRootEntry>();
 		public bool SyncSelection = true;
 		public string SearchTerm; // Built-in search doesn't preserve row order, so we perform search manually
-#pragma warning restore 0649
 
 		public int TotalEntryCount
 		{
@@ -471,23 +474,27 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		protected override void SelectionChanged( IList<int> selectedIds )
+        protected override void SelectionChanged(IList<EntityId> selectedIds)
 		{
 			if( !state.SyncSelection || selectedIds == null )
 				return;
 
-			int[] selectionArray = new int[selectedIds.Count];
+            EntityId[] selectionArray = new EntityId[selectedIds.Count];
 			selectedIds.CopyTo( selectionArray, 0 );
 
-			Selection.instanceIDs = selectionArray;
+#if UNITY_6000_3_OR_NEWER
+            Selection.entityIds = selectionArray;
+#else
+            Selection.instanceIDs = selectionArray;
+#endif
 		}
 
-		protected override void DoubleClickedItem( int id )
+        protected override void DoubleClickedItem(EntityId id)
 		{
 			AssetDatabase.OpenAsset( id );
 		}
 
-		protected override void ContextClickedItem( int id )
+        protected override void ContextClickedItem(EntityId id)
 		{
 			ContextClicked();
 		}
@@ -518,21 +525,21 @@ namespace InspectPlusNamespace
 
 		protected override void SetupDragAndDrop( SetupDragAndDropArgs args )
 		{
-			IList<int> draggedItemIds = SortItemIDsInRowOrder( args.draggedItemIDs );
+            IList<EntityId> draggedItemIds = SortItemIDsInRowOrder(args.draggedItemIDs);
 			if( draggedItemIds.Count == 0 )
 				return;
 
 			List<Object> draggedObjects = new List<Object>( draggedItemIds.Count );
 			for( int i = 0; i < draggedItemIds.Count; i++ )
 			{
-				Object obj = EditorUtility.InstanceIDToObject( draggedItemIds[i] );
+                Object obj = Utilities.EntityIdToObject(draggedItemIds[i]);
 				if( obj )
 					draggedObjects.Add( obj );
 			}
 
 			DragAndDrop.objectReferences = draggedObjects.ToArray();
 			DragAndDrop.SetGenericData( "BasketIDs", draggedItemIds );
-			DragAndDrop.StartDrag( ( draggedItemIds.Count > 1 ) ? "<Multiple>" : FindEntryWithInstanceID( draggedItemIds[0] ).Name );
+            DragAndDrop.StartDrag((draggedItemIds.Count > 1) ? "<Multiple>" : FindEntryWithInstanceID(draggedItemIds[0], out _).Name);
 		}
 
 		protected override DragAndDropVisualMode HandleDragAndDrop( DragAndDropArgs args )
@@ -544,7 +551,7 @@ namespace InspectPlusNamespace
 
 			if( args.performDrop )
 			{
-				AddObjects( DragAndDrop.objectReferences, DragAndDrop.GetGenericData( "BasketIDs" ) as IList<int>,
+                AddObjects(DragAndDrop.objectReferences, DragAndDrop.GetGenericData("BasketIDs") as IList<EntityId>,
 					( args.parentItem is BasketWindowTreeViewItem ) ? ( args.parentItem as BasketWindowTreeViewItem ).Entry as BasketWindowRootEntry : null,
 					( args.dragAndDropPosition == DragAndDropPosition.OutsideItems ) ? state.Entries.Count : args.insertAtIndex );
 			}
@@ -578,7 +585,7 @@ namespace InspectPlusNamespace
 			AddObjects( objects, null, null, insertIndex );
 		}
 
-		private void AddObjects( Object[] objects, IList<int> instanceIDs, BasketWindowRootEntry targetParentEntry, int insertIndex )
+        private void AddObjects(Object[] objects, IList<EntityId> instanceIDs, BasketWindowRootEntry targetParentEntry, int insertIndex)
 		{
 			// If we're in search mode, exit search mode to make things easier
 			if( !string.IsNullOrEmpty( state.SearchTerm ) )
@@ -587,10 +594,9 @@ namespace InspectPlusNamespace
 				Reload();
 			}
 
-			if( instanceIDs == null )
-				instanceIDs = Array.ConvertAll( objects, ( e ) => ( e != null ) ? e.GetInstanceID() : 0 );
+            instanceIDs ??= Array.ConvertAll<Object, EntityId>(objects, (e) => (e != null) ? e.GetEntityId() : default);
 
-			List<int> addedInstanceIDs = new List<int>();
+            List<EntityId> addedInstanceIDs = new();
 			for( int i = instanceIDs.Count - 1; i >= 0; i-- )
 			{
 				if( !addedInstanceIDs.Contains( instanceIDs[i] ) && AddObject( instanceIDs[i], targetParentEntry, ref insertIndex ) != null )
@@ -608,7 +614,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private BasketWindowEntry AddObject( int instanceID, BasketWindowRootEntry targetParentEntry, ref int insertIndex )
+        private BasketWindowEntry AddObject(EntityId instanceID, BasketWindowRootEntry targetParentEntry, ref int insertIndex)
 		{
 			BasketWindowRootEntry parentEntry;
 			BasketWindowEntry entry = FindEntryWithInstanceID( instanceID, out parentEntry );
@@ -624,7 +630,7 @@ namespace InspectPlusNamespace
 				return entry;
 			}
 
-			Object obj = EditorUtility.InstanceIDToObject( instanceID );
+            Object obj = Utilities.EntityIdToObject(instanceID);
 			if( obj == null )
 				return null;
 
@@ -644,7 +650,7 @@ namespace InspectPlusNamespace
 
 				// Make sure that scene objects' SceneAsset exists in the list
 				SceneAsset sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>( scenePath );
-				parentEntry = ( FindEntryWithInstanceID( sceneAsset.GetInstanceID() ) as BasketWindowRootEntry ) ?? AddObject( sceneAsset.GetInstanceID(), targetParentEntry, ref insertIndex ) as BasketWindowRootEntry;
+                parentEntry = (FindEntryWithInstanceID(sceneAsset.GetEntityId(), out _) as BasketWindowRootEntry) ?? AddObject(sceneAsset.GetEntityId(), targetParentEntry, ref insertIndex) as BasketWindowRootEntry;
 				if( parentEntry == null )
 					return null;
 
@@ -655,10 +661,10 @@ namespace InspectPlusNamespace
 			return entry;
 		}
 
-		private void RemoveObjects( IList<int> instanceIDs )
+        private void RemoveObjects(IList<EntityId> instanceIDs)
 		{
 			bool removedObjects = false;
-			foreach( int instanceID in instanceIDs )
+            foreach (EntityId instanceID in instanceIDs)
 			{
 				BasketWindowRootEntry parentEntry;
 				BasketWindowEntry entry = FindEntryWithInstanceID( instanceID, out parentEntry );
@@ -682,13 +688,7 @@ namespace InspectPlusNamespace
 			siblings.Insert( newIndex, entry );
 		}
 
-		private BasketWindowEntry FindEntryWithInstanceID( int instanceID )
-		{
-			BasketWindowRootEntry parentEntry;
-			return FindEntryWithInstanceID( instanceID, out parentEntry );
-		}
-
-		private BasketWindowEntry FindEntryWithInstanceID( int instanceID, out BasketWindowRootEntry parentEntry )
+        private BasketWindowEntry FindEntryWithInstanceID(EntityId instanceID, out BasketWindowRootEntry parentEntry)
 		{
 			foreach( BasketWindowRootEntry entry in state.Entries )
 			{

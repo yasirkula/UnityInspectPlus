@@ -31,7 +31,7 @@ namespace InspectPlusNamespace
 				int result;
 				if( preview1 != null && preview2 != null )
 				{
-					result = preview1.GetInstanceID().CompareTo( preview2.GetInstanceID() );
+                    result = preview1.GetEntityId().CompareTo(preview2.GetEntityId());
 					if( result != 0 )
 						return result;
 				}
@@ -42,7 +42,7 @@ namespace InspectPlusNamespace
 				// 2. Compare object thumbnails
 				if( preview1 != null && preview2 != null )
 				{
-					result = preview1.GetInstanceID().CompareTo( preview2.GetInstanceID() );
+                    result = preview1.GetEntityId().CompareTo(preview2.GetEntityId());
 					if( result != 0 )
 						return result;
 				}

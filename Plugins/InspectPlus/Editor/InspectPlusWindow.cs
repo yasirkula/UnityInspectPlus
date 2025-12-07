@@ -5,6 +5,11 @@ using UnityEditor;
 using UnityEditor.AssetImporters;
 using UnityEngine;
 using Object = UnityEngine.Object;
+#if UNITY_6000_3_OR_NEWER
+using EntityId = UnityEngine.EntityId;
+#else
+using EntityId = System.Int32;
+#endif
 
 namespace InspectPlusNamespace
 {
@@ -744,7 +749,7 @@ namespace InspectPlusNamespace
 			// that instance ID to Object to restore the reference without waiting for a domain reload
 			if( obj.GetType() == typeof( Object ) )
 			{
-				Object objectFromInstanceID = EditorUtility.InstanceIDToObject( obj.GetInstanceID() );
+                Object objectFromInstanceID = Utilities.EntityIdToObject(obj.GetEntityId());
 				if( obj == objectFromInstanceID ) // This will return true although obj isn't pointing to the correct object (i.e. GetType() will return wrong type)
 					obj = objectFromInstanceID;
 			}
@@ -925,8 +930,8 @@ namespace InspectPlusNamespace
 			}
 			else if( !ReferenceEquals( mainObject, null ) && ( inspectorDrawerCount == 0 || mainObject == null ) )
 			{
-				/// Object can be fake-null after entering/exiting play mode or deleting it and then undoing it. Re-fetching the Object via <see cref="EditorUtility.InstanceIDToObject"/> seems to fix the issue.
-				Object _mainObject = EditorUtility.InstanceIDToObject( mainObject.GetInstanceID() );
+                /// Object can be fake-null after entering/exiting play mode or deleting it and then undoing it. Re-fetching the Object via <see cref="Utilities.EntityIdToObject"/> seems to fix the issue.
+                Object _mainObject = Utilities.EntityIdToObject(mainObject.GetEntityId());
 				if( _mainObject != null )
 					InspectInternal( _mainObject, false );
 			}
@@ -1002,7 +1007,7 @@ namespace InspectPlusNamespace
 				hierarchyWindow.Refresh();
 		}
 
-		private void ProjectWindowSelectionChanged( IList<int> newSelection )
+        private void ProjectWindowSelectionChanged(IList<EntityId> newSelection)
 		{
 			DestroyImmediate( projectWindowSelectionEditor );
 			projectWindowSelectionEditor = null;
@@ -1012,7 +1017,7 @@ namespace InspectPlusNamespace
 				Object[] selection = new Object[newSelection.Count];
 				for( int i = 0; i < selection.Length; i++ )
 				{
-					Object obj = EditorUtility.InstanceIDToObject( newSelection[i] );
+                    Object obj = Utilities.EntityIdToObject(newSelection[i]);
 					if( !obj || ( i > 0 && selection[0].GetType() != obj.GetType() ) ) // All objects must be of same type
 						return;
 
@@ -1034,13 +1039,13 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private void HierarchyWindowSelectionChanged( IList<int> newSelection )
+        private void HierarchyWindowSelectionChanged(IList<EntityId> newSelection)
 		{
 			if( newSelection != null && newSelection.Count > 0 )
 			{
 				if( hierarchyWindowBoundInspector )
 				{
-					hierarchyWindowBoundInspector.InspectInternal( EditorUtility.InstanceIDToObject( newSelection[newSelection.Count - 1] ) as GameObject, true );
+                    hierarchyWindowBoundInspector.InspectInternal(Utilities.EntityIdToObject(newSelection[newSelection.Count - 1]) as GameObject, true);
 					hierarchyWindowBoundInspector.shouldRepaint = true;
 				}
 			}
@@ -1155,7 +1160,7 @@ namespace InspectPlusNamespace
 					// In this case, clear project window's selection
 					if( ev.type == EventType.MouseDown && ev.button == 0 )
 					{
-						projectWindow.GetTreeView().SetSelection( new int[0] );
+                        projectWindow.GetTreeView().SetSelection(new EntityId[0]);
 						ProjectWindowSelectionChanged( null );
 
 						shouldRepaint = true;
@@ -1175,7 +1180,7 @@ namespace InspectPlusNamespace
 					// In this case, clear hierarchy window's selection
 					if( ev.type == EventType.MouseDown && ev.button == 0 )
 					{
-						hierarchyWindow.GetTreeView().SetSelection( new int[0] );
+                        hierarchyWindow.GetTreeView().SetSelection(new EntityId[0]);
 						HierarchyWindowSelectionChanged( null );
 
 						shouldRepaint = true;

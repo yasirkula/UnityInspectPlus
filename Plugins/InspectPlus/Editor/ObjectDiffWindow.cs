@@ -104,7 +104,6 @@ namespace InspectPlusNamespace
 		private readonly GUIContent COPY_COMPONENT_TO_RIGHT_BUTTON = new GUIContent( ">", "Copy the component" );
 		private readonly GUIContent DESTROY_COMPONENT_BUTTON = new GUIContent( "X", "Destroy (remove) the component" );
 
-#pragma warning disable 0649
 		[SerializeField] // SerializeField is needed to access these properties via windowSerialized
 		private Object obj1, obj2;
 		[SerializeField]
@@ -114,7 +113,6 @@ namespace InspectPlusNamespace
 
 		[SerializeField]
 		private bool showSameValues = true;
-#pragma warning restore 0649
 
 		private SerializedObject windowSerialized;
 

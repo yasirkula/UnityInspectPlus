@@ -90,6 +90,28 @@ namespace InspectPlusNamespace
 			return caseInsensitiveComparer.IndexOf( source, value, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace ) >= 0;
 		}
 
+#if UNITY_6000_3_OR_NEWER
+        public static EntityId GetEntityId(this Object obj)
+        {
+            return obj.GetEntityId();
+        }
+
+        public static Object EntityIdToObject(EntityId entityId)
+        {
+            return EditorUtility.EntityIdToObject(entityId);
+        }
+#else
+        public static int GetEntityId(this Object obj)
+        {
+            return obj.GetInstanceID();
+        }
+        
+        public static Object EntityIdToObject(int instanceID)
+        {
+            return EditorUtility.InstanceIDToObject(instanceID);
+        }
+#endif
+
 		// Get filtered variables for an object
 		public static VariableGetterHolder[] GetFilteredVariablesForObject( object obj )
 		{

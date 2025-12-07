@@ -1,12 +1,20 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Reflection;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 using Object = UnityEngine.Object;
-#if UNITY_6000_2_OR_NEWER
+#if UNITY_6000_3_OR_NEWER
+using EntityId = UnityEngine.EntityId;
+#else
+using EntityId = System.Int32;
+#endif
+#if UNITY_6000_3_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<UnityEngine.EntityId>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<UnityEngine.EntityId>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<UnityEngine.EntityId>;
+#elif UNITY_6000_2_OR_NEWER
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
@@ -14,7 +22,7 @@ using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
 
 namespace InspectPlusNamespace
 {
-	public delegate void HierarchyWindowSelectionChangedDelegate( IList<int> newSelection );
+    public delegate void HierarchyWindowSelectionChangedDelegate(IList<EntityId> newSelection);
 
 	public class IsolatedHierarchy : ScriptableObject
 	{
@@ -27,12 +35,10 @@ namespace InspectPlusNamespace
 	[Serializable]
 	public class CustomHierarchyWindow
 	{
-#pragma warning disable 0649
 		[SerializeField]
 		private TreeViewState treeViewState;
 		[SerializeField]
 		private Transform rootTransform;
-#pragma warning restore 0649
 
 		private CustomHierarchyWindowDrawer treeView;
 		private SearchField searchField;
@@ -130,7 +136,11 @@ namespace InspectPlusNamespace
 				}
 
 				hierarchy.Reload();
-				hierarchy.SetSelection( Selection.instanceIDs, TreeViewSelectionOptions.RevealAndFrame );
+#if UNITY_6000_3_OR_NEWER
+                hierarchy.SetSelection(Selection.entityIds, TreeViewSelectionOptions.RevealAndFrame);
+#else
+                hierarchy.SetSelection(Selection.instanceIDs, TreeViewSelectionOptions.RevealAndFrame);
+#endif
 			}
 		}
 
@@ -158,7 +168,7 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private readonly int rootGameObjectID;
+        private readonly EntityId rootGameObjectID;
 		private GameObject RootGameObject { get { return GetGameObjectFromInstanceID( rootGameObjectID ); } }
 		private Transform RootTransform { get { return GetTransformFromInstanceID( rootGameObjectID ); } }
 
@@ -173,7 +183,7 @@ namespace InspectPlusNamespace
 
 		public CustomHierarchyWindowDrawer( TreeViewState state, Transform rootTransform ) : base( state )
 		{
-			rootGameObjectID = rootTransform.gameObject.GetInstanceID();
+            rootGameObjectID = rootTransform.gameObject.GetEntityId();
 			selectedIconGetter = typeof( EditorUtility ).GetMethod( "GetIconInActiveState", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
 
 			Reload();
@@ -213,7 +223,7 @@ namespace InspectPlusNamespace
 				if( !child )
 					continue;
 
-				int instanceID = child.gameObject.GetInstanceID();
+                EntityId instanceID = child.gameObject.GetEntityId();
 				string displayName = child.name;
 				TreeViewItem item = null;
 				if( !isSearching || displayName.ContainsIgnoreCase( searchString ) )
@@ -233,9 +243,9 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		protected override IList<int> GetAncestors( int id )
+        protected override IList<EntityId> GetAncestors(EntityId id)
 		{
-			List<int> ancestors = new List<int>();
+			List<EntityId> ancestors = new();
 			Transform transform = GetTransformFromInstanceID( id );
 			if( !transform )
 				return ancestors;
@@ -243,26 +253,26 @@ namespace InspectPlusNamespace
 			while( transform.parent )
 			{
 				transform = transform.parent;
-				ancestors.Add( transform.gameObject.GetInstanceID() );
+                ancestors.Add(transform.gameObject.GetEntityId());
 			}
 
 			return ancestors;
 		}
 
-		protected override IList<int> GetDescendantsThatHaveChildren( int id )
+        protected override IList<EntityId> GetDescendantsThatHaveChildren(EntityId id)
 		{
 			Transform transform = GetTransformFromInstanceID( id );
 			if( !transform )
-				return new List<int>( 0 );
+                return new List<EntityId>(0);
 
 			Stack<Transform> stack = new Stack<Transform>();
 			stack.Push( transform );
 
-			List<int> parents = new List<int>();
+            List<EntityId> parents = new();
 			while( stack.Count > 0 )
 			{
 				Transform current = stack.Pop();
-				parents.Add( current.gameObject.GetInstanceID() );
+                parents.Add(current.gameObject.GetEntityId());
 				for( int i = 0, childCount = current.childCount; i < childCount; i++ )
 				{
 					Transform child = current.GetChild( i );
@@ -333,7 +343,7 @@ namespace InspectPlusNamespace
 				style.Draw( rect, args.label, false, false, args.selected, args.focused );
 		}
 
-		protected override void SelectionChanged( IList<int> selectedIds )
+        protected override void SelectionChanged(IList<EntityId> selectedIds)
 		{
 			try
 			{
@@ -351,7 +361,7 @@ namespace InspectPlusNamespace
 
 		private GameObject[] GetSelectedGameObjects()
 		{
-			IList<int> selectedIds = GetSelection();
+            IList<EntityId> selectedIds = GetSelection();
 			if( selectedIds == null || selectedIds.Count == 0 )
 				return new GameObject[0];
 
@@ -381,13 +391,13 @@ namespace InspectPlusNamespace
 		{
 			if( args.acceptedRename && args.newName != args.originalName && args.newName.Trim().Length > 0 )
 			{
-				GameObject selection = (GameObject) EditorUtility.InstanceIDToObject( args.itemID );
+                GameObject selection = (GameObject)Utilities.EntityIdToObject(args.itemID);
 				Undo.RegisterCompleteObjectUndo( selection, "Rename Transform" );
 				selection.name = args.newName;
 			}
 		}
 
-		protected override void DoubleClickedItem( int id )
+        protected override void DoubleClickedItem(EntityId id)
 		{
 			Transform transform = GetTransformFromInstanceID( id );
 			if( transform && SceneView.lastActiveSceneView )
@@ -402,7 +412,7 @@ namespace InspectPlusNamespace
 			ShowContextMenu( GetSelectedGameObjects(), false );
 		}
 
-		protected override void ContextClickedItem( int id )
+        protected override void ContextClickedItem(EntityId id)
 		{
 			ShowContextMenu( GetSelectedGameObjects(), false );
 		}
@@ -429,7 +439,7 @@ namespace InspectPlusNamespace
 
 				if( hasSelection )
 				{
-					TreeViewItem selectedItem = FindItem( selection[0].GetInstanceID(), rootItem );
+                    TreeViewItem selectedItem = FindItem(selection[0].GetEntityId(), rootItem);
 					if( selectedItem != null )
 					{
 						menu.AddItem( new GUIContent( "Rename" ), false, () => BeginRename( selectedItem ) );
@@ -438,13 +448,13 @@ namespace InspectPlusNamespace
 
 						menu.AddSeparator( "" );
 
-						Object prefab = PrefabUtility.GetCorrespondingObjectFromSource( EditorUtility.InstanceIDToObject( selectedItem.id ) );
+                        Object prefab = PrefabUtility.GetCorrespondingObjectFromSource(Utilities.EntityIdToObject(selectedItem.id));
 						if( prefab )
 						{
 							menu.AddItem( new GUIContent( "Select Prefab" ), false, () =>
 							{
 								Selection.activeObject = prefab;
-								EditorGUIUtility.PingObject( prefab.GetInstanceID() );
+                                EditorGUIUtility.PingObject(prefab);
 							} );
 
 							for( int i = 0; i < selection.Length; i++ )
@@ -570,14 +580,14 @@ namespace InspectPlusNamespace
 		protected override void SetupDragAndDrop( SetupDragAndDropArgs args )
 		{
 			DragAndDrop.PrepareStartDrag();
-			IList<int> sortedDraggedIDs = SortItemIDsInRowOrder( args.draggedItemIDs );
+            IList<EntityId> sortedDraggedIDs = SortItemIDsInRowOrder(args.draggedItemIDs);
 
 			List<Object> objList = new List<Object>( sortedDraggedIDs.Count );
 			for( int i = 0; i < sortedDraggedIDs.Count; i++ )
 			{
-				int instanceID = sortedDraggedIDs[i];
+                EntityId instanceID = sortedDraggedIDs[i];
 
-				Object obj = EditorUtility.InstanceIDToObject( instanceID );
+                Object obj = Utilities.EntityIdToObject(instanceID);
 				if( obj != null )
 					objList.Add( obj );
 			}
@@ -657,13 +667,13 @@ namespace InspectPlusNamespace
 
 			if( args.performDrop )
 			{
-				List<int> newSelection = new List<int>( draggedTransforms.Count );
+                List<EntityId> newSelection = new(draggedTransforms.Count);
 				for( int i = 0; i < draggedTransforms.Count; i++, siblingIndex++ )
 				{
 					Undo.SetTransformParent( draggedTransforms[i], parent, "Object Parenting" );
 					draggedTransforms[i].SetSiblingIndex( draggedTransforms[i].GetSiblingIndex() >= siblingIndex ? siblingIndex : ( siblingIndex - 1 ) );
 
-					newSelection.Add( draggedTransforms[i].gameObject.GetInstanceID() );
+                    newSelection.Add(draggedTransforms[i].gameObject.GetEntityId());
 				}
 
 				Reload();
@@ -739,14 +749,14 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		private GameObject GetGameObjectFromInstanceID( int instanceID )
+        private GameObject GetGameObjectFromInstanceID(EntityId instanceID)
 		{
-			return EditorUtility.InstanceIDToObject( instanceID ) as GameObject;
+            return Utilities.EntityIdToObject(instanceID) as GameObject;
 		}
 
-		private Transform GetTransformFromInstanceID( int instanceID )
+        private Transform GetTransformFromInstanceID(EntityId instanceID)
 		{
-			GameObject gameObject = EditorUtility.InstanceIDToObject( instanceID ) as GameObject;
+            GameObject gameObject = GetGameObjectFromInstanceID(instanceID);
 			return gameObject ? gameObject.transform : null;
 		}
 	}

@@ -5,7 +5,16 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
-#if UNITY_6000_2_OR_NEWER
+#if UNITY_6000_3_OR_NEWER
+using EntityId = UnityEngine.EntityId;
+#else
+using EntityId = System.Int32;
+#endif
+#if UNITY_6000_3_OR_NEWER
+using TreeView = UnityEditor.IMGUI.Controls.TreeView<UnityEngine.EntityId>;
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<UnityEngine.EntityId>;
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<UnityEngine.EntityId>;
+#elif UNITY_6000_2_OR_NEWER
 using TreeView = UnityEditor.IMGUI.Controls.TreeView<int>;
 using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
 using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
@@ -13,17 +22,15 @@ using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
 
 namespace InspectPlusNamespace
 {
-	public delegate void ProjectWindowSelectionChangedDelegate( IList<int> newSelection );
+    public delegate void ProjectWindowSelectionChangedDelegate(IList<EntityId> newSelection);
 
 	[System.Serializable]
 	public class CustomProjectWindow
 	{
-#pragma warning disable 0649
 		[SerializeField]
 		private TreeViewState treeViewState;
 		[SerializeField]
 		private string rootDirectory;
-#pragma warning restore 0649
 
 		private CustomProjectWindowDrawer treeView;
 		private SearchField searchField;
@@ -96,7 +103,7 @@ namespace InspectPlusNamespace
 		{
 			private Hash128 hash;
 
-			public int[] ChildIDs;
+            public EntityId[] ChildIDs;
 			public string[] ChildNames;
 			public Texture2D[] ChildThumbnails;
 
@@ -113,7 +120,7 @@ namespace InspectPlusNamespace
 					this.hash = hash;
 
 					Object[] childAssets = AssetDatabase.LoadAllAssetRepresentationsAtPath( path );
-					ChildIDs = new int[childAssets.Length];
+                    ChildIDs = new EntityId[childAssets.Length];
 					ChildNames = new string[childAssets.Length];
 					ChildThumbnails = new Texture2D[childAssets.Length];
 
@@ -121,7 +128,7 @@ namespace InspectPlusNamespace
 					{
 						Object childAsset = childAssets[i];
 
-						ChildIDs[i] = childAsset.GetInstanceID();
+                        ChildIDs[i] = childAsset.GetEntityId();
 						ChildNames[i] = childAsset.name;
 						ChildThumbnails[i] = AssetPreview.GetMiniThumbnail( childAsset );
 					}
@@ -131,9 +138,7 @@ namespace InspectPlusNamespace
 
 		private readonly string rootDirectory;
 		private readonly List<TreeViewItem> rows = new List<TreeViewItem>( 100 );
-		private readonly Dictionary<int, CacheEntry> childAssetsCache = new Dictionary<int, CacheEntry>( 256 );
-
-		private readonly MethodInfo instanceIDFromGUID;
+        private readonly Dictionary<EntityId, CacheEntry> childAssetsCache = new(256);
 
 		private bool isSearching;
 
@@ -143,8 +148,6 @@ namespace InspectPlusNamespace
 		public CustomProjectWindowDrawer( TreeViewState state, string rootDirectory ) : base( state )
 		{
 			this.rootDirectory = rootDirectory;
-			instanceIDFromGUID = typeof( AssetDatabase ).GetMethod( "GetInstanceIDFromGUID", BindingFlags.NonPublic | BindingFlags.Static );
-
 			Reload();
 		}
 
@@ -182,7 +185,7 @@ namespace InspectPlusNamespace
 				if( string.IsNullOrEmpty( entry ) )
 					continue;
 
-				int instanceID = GetInstanceIDFromPath( entry );
+                EntityId instanceID = GetInstanceIDFromPath(entry);
 				string displayName = Path.GetFileNameWithoutExtension( entry );
 				TreeViewItem item = null;
 				if( !isSearching || displayName.ContainsIgnoreCase( searchString ) )
@@ -205,7 +208,7 @@ namespace InspectPlusNamespace
 				else
 				{
 					CacheEntry cacheEntry = GetCacheEntry( instanceID, entry );
-					int[] childAssets = cacheEntry.ChildIDs;
+                    EntityId[] childAssets = cacheEntry.ChildIDs;
 					if( childAssets.Length > 0 )
 					{
 						if( isSearching || IsExpanded( instanceID ) )
@@ -234,9 +237,9 @@ namespace InspectPlusNamespace
 			}
 		}
 
-		protected override IList<int> GetAncestors( int id )
+        protected override IList<EntityId> GetAncestors(EntityId id)
 		{
-			List<int> ancestors = new List<int>();
+            List<EntityId> ancestors = new();
 			string path = AssetDatabase.GetAssetPath( id );
 			if( string.IsNullOrEmpty( path ) )
 				return ancestors;
@@ -256,11 +259,11 @@ namespace InspectPlusNamespace
 			return ancestors;
 		}
 
-		protected override IList<int> GetDescendantsThatHaveChildren( int id )
+        protected override IList<EntityId> GetDescendantsThatHaveChildren(EntityId id)
 		{
 			string path = AssetDatabase.GetAssetPath( id );
 			if( string.IsNullOrEmpty( path ) )
-				return new List<int>( 0 );
+                return new List<EntityId>(0);
 
 			if( !StringStartsWithFast( path, rootDirectory ) )
 			{
@@ -270,7 +273,7 @@ namespace InspectPlusNamespace
 					id = rootItem.id;
 				}
 				else
-					return new List<int>( 0 );
+                    return new List<EntityId>(0);
 			}
 
 			string[] entries;
@@ -279,10 +282,10 @@ namespace InspectPlusNamespace
 				if( File.Exists( path ) && AssetDatabase.IsMainAsset( id ) )
 				{
 					if( GetCacheEntry( id, path ).ChildIDs.Length > 0 )
-						return new List<int>( 1 ) { id };
+                        return new List<EntityId>(1) { id };
 				}
 
-				return new List<int>( 0 );
+                return new List<EntityId>(0);
 			}
 
 			Stack<string> pathsStack = new Stack<string>();
@@ -291,7 +294,7 @@ namespace InspectPlusNamespace
 			pathsStack.Push( path );
 			entriesStack.Push( entries );
 
-			List<int> parents = new List<int>();
+            List<EntityId> parents = new();
 			while( pathsStack.Count > 0 )
 			{
 				string current = pathsStack.Pop();
@@ -312,7 +315,7 @@ namespace InspectPlusNamespace
 					}
 					else if( File.Exists( currentEntry ) )
 					{
-						int instanceID = GetInstanceIDFromPath( currentEntry );
+                        EntityId instanceID = GetInstanceIDFromPath(currentEntry);
 						if( GetCacheEntry( instanceID, currentEntry ).ChildIDs.Length > 0 )
 							parents.Add( instanceID );
 					}
@@ -327,7 +330,7 @@ namespace InspectPlusNamespace
 			return AssetDatabase.IsValidFolder( AssetDatabase.GetAssetPath( item.id ) );
 		}
 
-		protected override void SelectionChanged( IList<int> selectedIds )
+		protected override void SelectionChanged(IList<EntityId> selectedIds)
 		{
 			try
 			{
@@ -342,10 +345,14 @@ namespace InspectPlusNamespace
 			if( !SyncSelection || selectedIds == null )
 				return;
 
-			int[] selectionArray = new int[selectedIds.Count];
+            EntityId[] selectionArray = new EntityId[selectedIds.Count];
 			selectedIds.CopyTo( selectionArray, 0 );
 
-			Selection.instanceIDs = selectionArray;
+#if UNITY_6000_3_OR_NEWER
+            Selection.entityIds = selectionArray;
+#else
+            Selection.instanceIDs = selectionArray;
+#endif
 		}
 
 		protected override bool CanRename( TreeViewItem item )
@@ -359,9 +366,9 @@ namespace InspectPlusNamespace
 				AssetDatabase.RenameAsset( AssetDatabase.GetAssetPath( args.itemID ), args.newName );
 		}
 
-		protected override void DoubleClickedItem( int id )
+        protected override void DoubleClickedItem(EntityId id)
 		{
-			Object obj = EditorUtility.InstanceIDToObject( id );
+            Object obj = Utilities.EntityIdToObject(id);
 			if( obj != null )
 			{
 				if( obj is DefaultAsset && AssetDatabase.IsValidFolder( AssetDatabase.GetAssetPath( obj ) ) )
@@ -378,7 +385,7 @@ namespace InspectPlusNamespace
 			Event.current.Use();
 		}
 
-		protected override void ContextClickedItem( int id )
+        protected override void ContextClickedItem(EntityId id)
 		{
 			ChangeUnitySelection();
 			EditorUtility.DisplayPopupMenu( new Rect( Event.current.mousePosition, new Vector2( 0f, 0f ) ), "Assets/", null );
@@ -419,15 +426,15 @@ namespace InspectPlusNamespace
 		protected override void SetupDragAndDrop( SetupDragAndDropArgs args )
 		{
 			DragAndDrop.PrepareStartDrag();
-			IList<int> sortedDraggedIDs = SortItemIDsInRowOrder( args.draggedItemIDs );
+            IList<EntityId> sortedDraggedIDs = SortItemIDsInRowOrder(args.draggedItemIDs);
 
 			List<Object> objList = new List<Object>( sortedDraggedIDs.Count );
 			List<string> paths = new List<string>( sortedDraggedIDs.Count );
 			for( int i = 0; i < sortedDraggedIDs.Count; i++ )
 			{
-				int instanceID = sortedDraggedIDs[i];
+                EntityId instanceID = sortedDraggedIDs[i];
 
-				Object obj = EditorUtility.InstanceIDToObject( instanceID );
+                Object obj = Utilities.EntityIdToObject(instanceID);
 				if( obj != null )
 				{
 					objList.Add( obj );
@@ -538,7 +545,7 @@ namespace InspectPlusNamespace
 					}
 				}
 
-				List<int> instanceIDs = new List<int>( assets.Count );
+                List<EntityId> instanceIDs = new(assets.Count);
 				AssetDatabase.StartAssetEditing();
 				try
 				{
@@ -551,7 +558,7 @@ namespace InspectPlusNamespace
 						string path = AssetDatabase.GenerateUniqueAssetPath( Path.Combine( parentFolder, transform.name + ".prefab" ) );
 						GameObject prefab = PrefabUtility.SaveAsPrefabAssetAndConnect( transform.gameObject, path, InteractionMode.UserAction );
 						if( prefab )
-							instanceIDs.Add( prefab.GetInstanceID() );
+                            instanceIDs.Add(prefab.GetEntityId());
 					}
 				}
 				finally
@@ -632,7 +639,7 @@ namespace InspectPlusNamespace
 			}
 			else
 			{
-				int[] instanceIDs = new int[newPaths.Length];
+                EntityId[] instanceIDs = new EntityId[newPaths.Length];
 				for( int i = 0; i < newPaths.Length; i++ )
 					instanceIDs[i] = GetInstanceIDFromPath( newPaths[i] );
 
@@ -642,7 +649,7 @@ namespace InspectPlusNamespace
 		}
 
 		// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/ProjectWindow/ProjectWindowUtil.cs
-		private bool DeleteAssets( IList<int> instanceIDs, bool askIfSure )
+        private bool DeleteAssets(IList<EntityId> instanceIDs, bool askIfSure)
 		{
 			if( instanceIDs.Count == 0 )
 				return true;
@@ -702,7 +709,7 @@ namespace InspectPlusNamespace
 		}
 
 		// Credit: https://github.com/Unity-Technologies/UnityCsReference/blob/master/Editor/Mono/ProjectWindow/ProjectWindowUtil.cs
-		private void DuplicateAssets( IList<int> instanceIDs )
+        private void DuplicateAssets(IList<EntityId> instanceIDs)
 		{
 			AssetDatabase.Refresh();
 
@@ -727,7 +734,7 @@ namespace InspectPlusNamespace
 				AssetDatabase.Refresh();
 			}
 
-			int[] newInstanceIDs = new int[copiedPaths.Count];
+            EntityId[] newInstanceIDs = new EntityId[copiedPaths.Count];
 			for( int i = 0; i < copiedPaths.Count; i++ )
 				newInstanceIDs[i] = GetInstanceIDFromPath( copiedPaths[i] );
 
@@ -736,19 +743,23 @@ namespace InspectPlusNamespace
 
 		public void ChangeUnitySelection()
 		{
-			IList<int> selection = GetSelection();
+            IList<EntityId> selection = GetSelection();
 			if( selection.Count == 0 )
 				Selection.activeObject = AssetDatabase.LoadAssetAtPath<Object>( rootDirectory );
 			else
 			{
-				int[] selectionArray = new int[selection.Count];
+                EntityId[] selectionArray = new EntityId[selection.Count];
 				selection.CopyTo( selectionArray, 0 );
 
-				Selection.instanceIDs = selectionArray;
-			}
-		}
+#if UNITY_6000_3_OR_NEWER
+                Selection.entityIds = selectionArray;
+#else
+                Selection.instanceIDs = selectionArray;
+#endif
+            }
+        }
 
-		private List<string> GetPathsOfMainAssets( IList<int> instanceIDs )
+        private List<string> GetPathsOfMainAssets(IList<EntityId> instanceIDs)
 		{
 			List<string> result = new List<string>( instanceIDs.Count );
 			for( int i = 0; i < instanceIDs.Count; i++ )
@@ -818,15 +829,12 @@ namespace InspectPlusNamespace
 			return hasValidEntries;
 		}
 
-		private int GetInstanceIDFromPath( string path )
-		{
-			if( instanceIDFromGUID != null )
-				return (int) instanceIDFromGUID.Invoke( null, new object[1] { AssetDatabase.AssetPathToGUID( path ) } );
-			else
-				return AssetDatabase.LoadMainAssetAtPath( path ).GetInstanceID();
-		}
+        private EntityId GetInstanceIDFromPath(string path)
+        {
+            return AssetDatabase.LoadMainAssetAtPath(path).GetEntityId();
+        }
 
-		private CacheEntry GetCacheEntry( int instanceID, string path )
+        private CacheEntry GetCacheEntry(EntityId instanceID, string path)
 		{
 			CacheEntry cacheEntry;
 			if( !childAssetsCache.TryGetValue( instanceID, out cacheEntry ) )
