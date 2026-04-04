@@ -39,11 +39,7 @@ namespace InspectPlusNamespace
 						InspectPlusWindow.Inspect( TypeWrapper.Create( type ), false, true );
 					else
 					{
-#if UNITY_2022_3_OR_NEWER
 						Object instance = Object.FindAnyObjectByType( type, FindObjectsInactive.Include );
-#else
-						Object instance = Object.FindObjectOfType( type );
-#endif
 						if( instance != null )
 							InspectPlusWindow.Inspect( instance, false );
 						else

@@ -192,18 +192,9 @@ namespace InspectPlusNamespace
 
 		private delegate FieldInfo FieldInfoGetter( SerializedProperty p, out Type t );
 
-		private static readonly FieldInfoGetter fieldInfoGetter;
-		private static readonly PropertyInfo gradientValueGetter;
-		private static readonly PropertyInfo inspectorModeGetter;
-
-		static SerializablePropertyExtensions()
-		{
-			MethodInfo fieldInfoGetterMethod = typeof( Editor ).Assembly.GetType( "UnityEditor.ScriptAttributeUtility" ).GetMethod( "GetFieldInfoAndStaticTypeFromProperty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static );
-
-			fieldInfoGetter = (FieldInfoGetter) Delegate.CreateDelegate( typeof( FieldInfoGetter ), fieldInfoGetterMethod );
-			gradientValueGetter = typeof( SerializedProperty ).GetProperty( "gradientValue", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-			inspectorModeGetter = typeof( SerializedObject ).GetProperty( "inspectorMode", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
-		}
+        private static readonly FieldInfoGetter fieldInfoGetter = (FieldInfoGetter)Delegate.CreateDelegate(typeof(FieldInfoGetter), typeof(Editor).Assembly.GetType("UnityEditor.ScriptAttributeUtility").GetMethod("GetFieldInfoAndStaticTypeFromProperty", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static));
+        private static readonly PropertyInfo gradientValueGetter = typeof(SerializedProperty).GetProperty("gradientValue", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly PropertyInfo inspectorModeGetter = typeof(SerializedObject).GetProperty("inspectorMode", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
 		public static object CopyValue( this SerializedProperty property )
 		{
