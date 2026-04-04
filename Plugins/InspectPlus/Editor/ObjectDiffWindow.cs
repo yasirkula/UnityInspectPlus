@@ -13,6 +13,7 @@ namespace InspectPlusNamespace
 		#region Helper Classes
 		// Diffs are stored in a tree consisting of DiffNodes. Each DiffNode contains SerializedProperties with the same propertyPath from compared objects,
 		// or a single SerializedProperty if that SerializedProperty's propertyPath doesn't exist on the other object
+        [Serializable]
 		private class DiffNode
 		{
 			[NonSerialized] // We don't need these to be serialized while serializing RootDiffNode

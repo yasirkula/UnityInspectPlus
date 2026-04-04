@@ -156,7 +156,7 @@ namespace InspectPlusNamespace
 			if( AssetDatabase.IsValidFolder( rootDirectory ) )
 				return new TreeViewItem { id = GetInstanceIDFromPath( rootDirectory ), depth = -1 };
 
-			return new TreeViewItem { id = -1, depth = -1 };
+			return new TreeViewItem { depth = -1 };
 		}
 
 		protected override IList<TreeViewItem> BuildRows( TreeViewItem root )

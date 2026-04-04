@@ -564,20 +564,26 @@ namespace InspectPlusNamespace
 				case SerializedPropertyType.Gradient: return clipboard is Gradient;
 				case SerializedPropertyType.Integer: return clipboard is long || clipboard is double;
 				case SerializedPropertyType.LayerMask: return clipboard is long;
-				case SerializedPropertyType.ManagedReference:
-					if( clipboard is ManagedObjectClipboard )
-					{
-						string fieldTypeRaw = property.managedReferenceFieldTypename;
-						if( string.IsNullOrEmpty( fieldTypeRaw ) )
-							return ( (ManagedObjectClipboard) clipboard ).type == property.type;
+                case SerializedPropertyType.ManagedReference:
+                {
+                    if (clipboard is not ManagedObjectClipboard managedObjectClipboard)
+                        return false;
 
-						string[] fieldTypeSplit = fieldTypeRaw.Split( ' ' );
-						Type fieldType = Assembly.Load( fieldTypeSplit[0] ).GetType( fieldTypeSplit[1] );
+                    string fieldTypeRaw = property.managedReferenceFieldTypename;
+                    if (string.IsNullOrEmpty(fieldTypeRaw))
+                        return managedObjectClipboard.type == property.type;
 
-						return fieldType.IsAssignableFrom( ( (ManagedObjectClipboard) clipboard ).value.GetType() );
-					}
-					else
-						return false;
+                    int assemblyNameSeparatorIndex = fieldTypeRaw.IndexOf(' ');
+                    if (assemblyNameSeparatorIndex <= 0)
+                        return false;
+
+                    /// Logic copied from <see cref="ScriptAttributeUtility.GetTypeFromManagedReferenceFullTypeName"/>.
+                    string assemblyName = fieldTypeRaw.Substring(0, assemblyNameSeparatorIndex);
+                    string typeFullName = fieldTypeRaw.Substring(assemblyNameSeparatorIndex);
+                    Type fieldType = Type.GetType(typeFullName + ", " + assemblyName);
+
+                    return fieldType.IsAssignableFrom(managedObjectClipboard.value.GetType());
+                }
 				case SerializedPropertyType.ObjectReference: return TryAssignClipboardToObjectProperty( property, clipboard, true );
 				case SerializedPropertyType.Quaternion: return clipboard is VectorClipboard;
 				case SerializedPropertyType.Rect: return clipboard is VectorClipboard;

@@ -312,11 +312,25 @@ namespace InspectPlusNamespace
 		}
 	}
 
+    [Serializable]
 	public abstract class BasketWindowEntry
 	{
 		public Object Target;
 		public string Name = "Null";
-        public EntityId InstanceID => (Target != null) ? Target.GetEntityId() : GetHashCode();
+        public EntityId InstanceID
+        {
+            get
+            {
+                if (Target != null)
+                    return Target.GetEntityId();
+
+#if UNITY_6000_4_OR_NEWER
+                return EntityId.FromULong((ulong)GetHashCode());
+#else
+                return GetHashCode();
+#endif
+            }
+        }
 
 		public BasketWindowEntry( Object target )
 		{
@@ -440,12 +454,19 @@ namespace InspectPlusNamespace
 
 		protected override TreeViewItem BuildRoot()
 		{
-			TreeViewItem root = new TreeViewItem() { id = -1, depth = -1, displayName = "Root" };
+			TreeViewItem root = new TreeViewItem() { depth = -1, displayName = "Root" };
 			foreach( BasketWindowRootEntry entry in state.Entries )
 				CreateItemForEntryRecursive( entry, root );
 
-			if( !root.hasChildren ) // If we don't create a dummy child, Unity throws an exception
-				root.AddChild( new TreeViewItem() { id = -2, depth = 0, displayName = string.IsNullOrEmpty( state.SearchTerm ) ? "Basket is empty..." : "No matching results..." } );
+            if (!root.hasChildren) // If we don't create a dummy child, Unity throws an exception
+            {
+#if UNITY_6000_4_OR_NEWER
+                EntityId dummyId = EntityId.FromULong(1);
+#else
+                EntityId dummyId = -2;
+#endif
+                root.AddChild(new TreeViewItem() { id = dummyId, depth = 0, displayName = string.IsNullOrEmpty(state.SearchTerm) ? "Basket is empty..." : "No matching results..." });
+            }
 
 			return root;
 		}

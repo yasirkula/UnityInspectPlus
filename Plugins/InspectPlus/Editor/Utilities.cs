@@ -296,8 +296,8 @@ namespace InspectPlusNamespace
 						return type;
 				}
 
-				// Search all assemblies for the type
-				foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+                // Search all assemblies for the type
+                foreach (Assembly assembly in GetAllAssemblies())
 				{
 					try
 					{
@@ -315,6 +315,15 @@ namespace InspectPlusNamespace
 			// The type just couldn't be found...
 			return null;
 		}
+
+        public static IReadOnlyList<Assembly> GetAllAssemblies()
+        {
+#if UNITY_6000_4_OR_NEWER
+            return UnityEngine.Assemblies.CurrentAssemblies.GetLoadedAssemblies();
+#else
+            return AppDomain.CurrentDomain.GetAssemblies();
+#endif
+        }
 
 		public static StringBuilder AppendType( this StringBuilder sb, Type type )
 		{

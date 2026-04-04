@@ -194,7 +194,7 @@ namespace InspectPlusNamespace
 			if( RootGameObject )
 				return new TreeViewItem { id = rootGameObjectID, depth = -1 };
 
-			return new TreeViewItem { id = -1, depth = -1 };
+			return new TreeViewItem { depth = -1 };
 		}
 
 		protected override IList<TreeViewItem> BuildRows( TreeViewItem root )

@@ -131,7 +131,7 @@ namespace InspectPlusNamespace
 							if( m_type != null )
 								return m_type;
 
-							foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+                            foreach (Assembly assembly in Utilities.GetAllAssemblies())
 							{
 								if( !assembly.FullName.StartsWith( "UnityEngine" ) )
 									continue;
@@ -162,8 +162,8 @@ namespace InspectPlusNamespace
 						}
 						else
 						{
-							// Search all loaded assemblies for the type
-							foreach( Assembly assembly in AppDomain.CurrentDomain.GetAssemblies() )
+                            // Search all loaded assemblies for the type
+                            foreach (Assembly assembly in Utilities.GetAllAssemblies())
 							{
 #if NET_4_6 || NET_STANDARD_2_0
 								if( assembly.IsDynamic )
@@ -884,7 +884,11 @@ namespace InspectPlusNamespace
 					// Search all objects of specified type
 					if( serializedType.Type != null )
 					{
+#if UNITY_6000_4_OR_NEWER
+                        Object[] objects = Object.FindObjectsByType(serializedType.Type);
+#else
 						Object[] objects = Object.FindObjectsByType( serializedType.Type, FindObjectsSortMode.None );
+#endif
 						for( int i = 0; i < objects.Length; i++ )
 						{
 							if( objects[i].name == ObjectName )
@@ -1257,18 +1261,17 @@ namespace InspectPlusNamespace
 
 		public class IPGameObjectChild
 		{
-			[Serializable]
-			public struct RemovedComponentInfo
-			{
-				public IPType Type;
-				public int Index;
+            public readonly struct RemovedComponentInfo
+            {
+                public readonly IPType Type;
+                public readonly int Index;
 
-				public RemovedComponentInfo( IPType type, int index )
-				{
-					Type = type;
-					Index = index;
-				}
-			}
+                public RemovedComponentInfo(IPType type, int index)
+                {
+                    Type = type;
+                    Index = index;
+                }
+            }
 
 			public string Name;
 			public bool IsActive;
@@ -1586,22 +1589,21 @@ namespace InspectPlusNamespace
 
 		public class IPComponentGroup : IPObject
 		{
-			[Serializable]
-			public struct ComponentInfo
-			{
-				public SerializedClipboard Component;
-				public bool Enabled;
-				public int HideFlags;
-				public int Index;
+            public readonly struct ComponentInfo
+            {
+                public readonly SerializedClipboard Component;
+                public readonly bool Enabled;
+                public readonly int HideFlags;
+                public readonly int Index;
 
-				public ComponentInfo( SerializedClipboard component, bool enabled, int hideFlags, int index )
-				{
-					Component = component;
-					Enabled = enabled;
-					HideFlags = hideFlags;
-					Index = index;
-				}
-			}
+                public ComponentInfo(SerializedClipboard component, bool enabled, int hideFlags, int index)
+                {
+                    Component = component;
+                    Enabled = enabled;
+                    HideFlags = hideFlags;
+                    Index = index;
+                }
+            }
 
 			public readonly struct ComponentToPaste
 			{
